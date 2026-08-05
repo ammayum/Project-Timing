@@ -1,0 +1,21 @@
+[Unit]
+Description=Project Billing System API
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=project-billing
+Group=project-billing
+WorkingDirectory=/opt/project-billing-system
+EnvironmentFile=/etc/project-billing-system/project-billing-system.env
+ExecStart=/usr/bin/node server/src/index.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/project-billing-system/server/src/db
+
+[Install]
+WantedBy=multi-user.target

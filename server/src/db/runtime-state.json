@@ -1,0 +1,10 @@
+{
+  "mode": "mysql_primary",
+  "primaryDb": "mysql",
+  "writeEnabled": true,
+  "mysqlEnabled": true,
+  "postgresEnabled": true,
+  "changedByEmployeeId": 1,
+  "changedAt": "2026-07-20T15:18:43.561Z",
+  "note": "Switched to mysql_primary"
+}
