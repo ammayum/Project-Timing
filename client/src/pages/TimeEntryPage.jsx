@@ -66,23 +66,6 @@ export function TimeEntryPage({ auth }) {
     setStatus({ message: `CSV validated successfully. Total hours: ${preview.totalHours}`, tone: "success" });
   };
 
-  const handleResolveKits = async (kits) => {
-    const identifiers = kits
-      .split(/[|,\s]+/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-    if (!identifiers.length) {
-      return;
-    }
-
-    try {
-      await apiClient.post("/kits/resolve", { identifiers });
-      setStatus({ message: "Kits resolved successfully.", tone: "info" });
-    } catch (error) {
-      setStatus({ message: error.message, tone: "error" });
-    }
-  };
-
   const handleLoadExisting = async () => {
     try {
       const response = await apiClient.get(`/time-entries?date=${date}`);
@@ -191,8 +174,6 @@ export function TimeEntryPage({ auth }) {
         maxWorkingHours={workingHoursPerDay}
         overtimeExceeded={overtimeExceeded}
         inlineError={inlineError}
-        onResolveKits={handleResolveKits}
-        auth={auth}
       />
 
       <CsvUploadModal isOpen={showCsvModal} onClose={() => setShowCsvModal(false)} onPreviewReady={handleCsvPreview} />

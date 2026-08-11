@@ -246,10 +246,16 @@ export function AdminPage() {
     );
 
   const saveUser = async () => {
+    if (!userForm.sso_id.trim()) {
+      setStatus({ message: "SSO ID / Username is required.", tone: "error" });
+      return;
+    }
+
     const result = await runAction(
       () =>
         apiClient.post("/admin/users", {
           ...userForm,
+          sso_id: userForm.sso_id.trim(),
           team_id: userForm.team_id ? Number(userForm.team_id) : null,
           is_admin: userForm.role === "admin",
           set_default_password: true,
@@ -414,7 +420,7 @@ export function AdminPage() {
             <div className="grid gap-4 md:grid-cols-3">
               <input
                 type="text"
-                placeholder="SSO ID / Username"
+                placeholder="SSO ID / Username (required)"
                 value={userForm.sso_id}
                 onChange={(e) => setUserForm({ ...userForm, sso_id: e.target.value })}
                 className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white"

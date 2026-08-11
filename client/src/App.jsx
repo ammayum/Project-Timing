@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
-import { Boxes, ChartColumnIncreasing, Clock, Home, ShieldCheck, Warehouse } from "lucide-react";
+import { Boxes, ChartColumnIncreasing, ClipboardCheck, ClipboardList, Clock, Home, ShieldCheck, Warehouse } from "lucide-react";
 import { useAuth } from "./hooks/useAuth.js";
 import React from "react";
 
@@ -14,6 +14,12 @@ const DashboardPage = lazy(() =>
 );
 const ProjectKitsPage = lazy(() =>
   import("./pages/ProjectKitsPage.jsx").then((module) => ({ default: module.ProjectKitsPage }))
+);
+const StockUpdatesPage = lazy(() =>
+  import("./pages/StockUpdatesPage.jsx").then((module) => ({ default: module.StockUpdatesPage }))
+);
+const LogVsStockPage = lazy(() =>
+  import("./pages/LogVsStockPage.jsx").then((module) => ({ default: module.LogVsStockPage }))
 );
 const PerformancePage = lazy(() =>
   import("./pages/PerformancePage.jsx").then((module) => ({ default: module.PerformancePage }))
@@ -32,6 +38,7 @@ export function App() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordChangeError, setPasswordChangeError] = useState("");
   const [passwordChangeLoading, setPasswordChangeLoading] = useState(false);
+  const [showPublicLogVsStock, setShowPublicLogVsStock] = useState(false);
 
   const { auth, loading, loginToApi, changePassword, logout } = useAuth();
 
@@ -123,6 +130,18 @@ export function App() {
     }
   };
 
+  if (!auth && showPublicLogVsStock) {
+    return (
+      <main className="min-h-screen p-4 md:p-8">
+        <div className="mx-auto max-w-7xl">
+          <Suspense fallback={<section className="glass-panel rounded-[2rem] p-8 text-white">Loading...</section>}>
+            <LogVsStockPage publicMode onBack={() => setShowPublicLogVsStock(false)} />
+          </Suspense>
+        </div>
+      </main>
+    );
+  }
+
   if (!auth) {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
@@ -173,6 +192,14 @@ export function App() {
                   className="w-full rounded-xl bg-aqua py-3 font-semibold text-white"
                 >
                   {loading ? "Signing In..." : "Login"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowPublicLogVsStock(true)}
+                  className="w-full rounded-xl bg-white/10 py-3 text-sm font-semibold text-white"
+                >
+                  Public Log_vs_stock
                 </button>
               </form>
             </div>
@@ -297,6 +324,32 @@ export function App() {
               </button>
             )}
 
+            {canAccessProjectKits && (
+              <button
+                type="button"
+                onClick={() => setActiveTab("stock-updates")}
+                className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium ${
+                  activeTab === "stock-updates" ? "bg-bt-purple text-white" : "bg-white/5 text-slate-200"
+                }`}
+              >
+                <ClipboardCheck size={16} />
+                Stock Updates
+              </button>
+            )}
+
+            {canAccessProjectKits && (
+              <button
+                type="button"
+                onClick={() => setActiveTab("log-vs-stock")}
+                className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium ${
+                  activeTab === "log-vs-stock" ? "bg-bt-purple-mid text-white" : "bg-white/5 text-slate-200"
+                }`}
+              >
+                <ClipboardList size={16} />
+                Log_vs_stock
+              </button>
+            )}
+
             {canAccessPerformance && (
               <button
                 type="button"
@@ -350,6 +403,8 @@ export function App() {
           {activeTab === "time" && <TimeEntryPage auth={auth} />}
           {activeTab === "inventory" && <InventoryPage auth={auth} />}
           {activeTab === "project-kits" && <ProjectKitsPage />}
+          {activeTab === "stock-updates" && <StockUpdatesPage />}
+          {activeTab === "log-vs-stock" && <LogVsStockPage />}
           {activeTab === "performance" && <PerformancePage />}
           {activeTab === "admin" && <AdminPage auth={auth} />}
         </Suspense>

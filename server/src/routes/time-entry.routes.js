@@ -7,15 +7,45 @@ import { csvService } from "../services/csv.service.js";
 import { projectRepository } from "../repositories/project.repository.js";
 import { activityRepository } from "../repositories/activity.repository.js";
 
+const booleanInputSchema = z.preprocess(
+  (value) => {
+    if (typeof value === "string") {
+      return value.trim().toLowerCase() === "true";
+    }
+    return value;
+  },
+  z.boolean().default(false),
+);
+
+const syncInputSchema = z.preprocess(
+  (value) => {
+    if (typeof value === "string") {
+      return value.trim().toLowerCase() === "true";
+    }
+    return value;
+  },
+  z.boolean().default(true),
+);
+
+const requiredTextSchema = z.preprocess(
+  (value) => (value == null ? "" : String(value)),
+  z.string().min(1),
+);
+
+const optionalTextSchema = z.preprocess(
+  (value) => (value == null ? undefined : String(value)),
+  z.string().optional().nullable(),
+);
+
 const entryRowSchema = z.object({
-  date: z.string().min(1),
-  activity: z.string().min(1),
-  order_num: z.string().optional().nullable(),
-  project: z.string().optional().nullable(),
-  from_time: z.string().min(1),
-  to_time: z.string().min(1),
-  overtime: z.boolean(),
-  kits: z.string().optional(),
+  date: requiredTextSchema,
+  activity: requiredTextSchema,
+  order_num: optionalTextSchema,
+  project: optionalTextSchema,
+  from_time: requiredTextSchema,
+  to_time: requiredTextSchema,
+  overtime: booleanInputSchema,
+  kits: optionalTextSchema,
 });
 
 const router = Router();
@@ -61,7 +91,7 @@ router.post(
   validate(
     z.object({
       body: z.object({
-        sync: z.boolean().default(true),
+        sync: syncInputSchema,
         entries: z.array(entryRowSchema).min(1),
       }),
     }),

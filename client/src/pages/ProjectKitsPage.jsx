@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { apiClient } from "../services/api.js";
+import { StatusBanner } from "../components/StatusBanner.jsx";
 
 function StatusPill({ status }) {
   const styles = {
@@ -32,15 +33,45 @@ function MetricCard({ label, value }) {
   );
 }
 
-export function ProjectKitsPage() {
+function MatchPill({ status }) {
+  const labels = {
+    matched: "Update available",
+    up_to_date: "Up to date",
+    unmatched: "No kit match",
+    conflict: "Match conflict",
+    ignored: "No identifier",
+  };
+
+  const styles = {
+    matched: "bg-bt-purple/10 text-bt-purple-dark",
+    up_to_date: "bg-bt-purple-lightest/50 text-bt-purple-dark",
+    unmatched: "bg-white/10 text-slate-500",
+    conflict: "bg-bt-purple-lightest text-bt-purple-deep",
+    ignored: "bg-white/10 text-slate-500",
+  };
+
+  return (
+    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${styles[status] || styles.unmatched}`}>
+      {labels[status] || "Not updateable"}
+    </span>
+  );
+}
+
+export function ProjectKitsPage({ stockOnly = false }) {
+  const queryClient = useQueryClient();
   const [expandedProjects, setExpandedProjects] = useState({});
   const [stockSearch, setStockSearch] = useState("");
   const [stockPage, setStockPage] = useState(1);
+  const [stockUpdateMessage, setStockUpdateMessage] = useState({ message: "", tone: "info" });
+  const [previewRow, setPreviewRow] = useState(null);
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [updatingStock, setUpdatingStock] = useState(false);
   const stockPageSize = 10;
 
   const projectsQuery = useQuery({
     queryKey: ["projects-with-kits"],
     queryFn: () => apiClient.get("/admin/projects-with-kits"),
+    enabled: !stockOnly,
   });
 
   const stockReportQuery = useQuery({
@@ -55,7 +86,33 @@ export function ProjectKitsPage() {
     }));
   };
 
-  if (projectsQuery.isLoading || stockReportQuery.isLoading) {
+  const refreshKitQueries = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["stock-report-vs-kits-used"] }),
+      queryClient.invalidateQueries({ queryKey: ["projects-with-kits"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-data"] }),
+    ]);
+  };
+
+  const updateStockMatches = async (scope, rows = []) => {
+    try {
+      setUpdatingStock(true);
+      const result = await apiClient.post("/kits/stock-report/update", { scope, rows });
+      setStockUpdateMessage({
+        message: `${result.updated_count} kit${result.updated_count === 1 ? "" : "s"} updated. ${result.unchanged_count} unchanged, ${result.skipped_count} skipped.`,
+        tone: result.updated_count ? "success" : "info",
+      });
+      setPreviewRow(null);
+      setBulkConfirmOpen(false);
+      await refreshKitQueries();
+    } catch (error) {
+      setStockUpdateMessage({ message: error.message || "Unable to update kits from stock report.", tone: "error" });
+    } finally {
+      setUpdatingStock(false);
+    }
+  };
+
+  if ((!stockOnly && projectsQuery.isLoading) || stockReportQuery.isLoading) {
     return <div className="glass-panel rounded-[2rem] border border-white/10 p-6">Loading project kits...</div>;
   }
 
@@ -88,23 +145,40 @@ export function ProjectKitsPage() {
     (currentStockPage - 1) * stockPageSize,
     currentStockPage * stockPageSize,
   );
+  const validStockMatches = stockRows.filter((row) => row.updateable);
+  const proposedFieldCount = validStockMatches.reduce(
+    (total, row) => total + Object.keys(row.proposed_changes || {}).length,
+    0,
+  );
+  const proposedFieldNames = [...new Set(validStockMatches.flatMap((row) => Object.keys(row.proposed_changes || {})))];
 
   return (
     <div className="space-y-6">
       <section className="glass-panel rounded-[2rem] border border-white/10 p-6 shadow-panel">
-        <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Project Relations</p>
-        <h2 className="mt-2 text-2xl font-semibold text-white">Kits By Project And Stock Check</h2>
+        <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{stockOnly ? "Kit Metadata Updates" : "Project Relations"}</p>
+        <h2 className="mt-2 text-2xl font-semibold text-white">{stockOnly ? "Stock Report Kit Updates" : "Kits By Project And Stock Check"}</h2>
         <p className="mt-2 text-sm text-slate-300">
-          Review project-linked kits, compare stock report rows against kits used in timesheets, and spot missing stock references.
+          {stockOnly
+            ? "Review matching stock records and safely update blank or auto-generated kit metadata."
+            : "Review project-linked kits, compare stock report rows against kits used in timesheets, and spot missing stock references."}
         </p>
       </section>
 
       <section className="glass-panel rounded-[2rem] border border-white/10 p-6 shadow-panel">
+        <StatusBanner message={stockUpdateMessage.message} tone={stockUpdateMessage.tone} />
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Stock Reconciliation</p>
             <h3 className="mt-2 text-xl font-semibold text-white">Stock Report Vs Kits Used</h3>
           </div>
+          <button
+            type="button"
+            onClick={() => setBulkConfirmOpen(true)}
+            disabled={!validStockMatches.length || updatingStock}
+            className="rounded-xl bg-aqua px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Update All Valid Matches
+          </button>
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -137,6 +211,8 @@ export function ProjectKitsPage() {
                 <th className="px-3 py-3">Serial</th>
                 <th className="px-3 py-3">Part Code</th>
                 <th className="px-3 py-3">Product</th>
+                <th className="px-3 py-3">Match</th>
+                <th className="px-3 py-3">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -154,11 +230,30 @@ export function ProjectKitsPage() {
                       <StatusPill status={row.status} />
                     </div>
                   </td>
+                  <td className="px-3 py-3">
+                    <MatchPill status={row.match_status || "unmatched"} />
+                    {row.matched_by && <div className="mt-1 text-xs text-slate-400">By {row.matched_by.replace("_", " ")}</div>}
+                    {Object.keys(row.proposed_changes || {}).length > 0 && (
+                      <div className="mt-1 text-xs text-slate-400">
+                        {Object.keys(row.proposed_changes).length} field{Object.keys(row.proposed_changes).length === 1 ? "" : "s"} ready
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-3">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewRow(row)}
+                      disabled={!row.updateable || updatingStock}
+                      className="rounded-lg bg-aqua/15 px-3 py-2 text-xs font-semibold text-aqua disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Preview
+                    </button>
+                  </td>
                 </tr>
               ))
               ) : (
                 <tr>
-                  <td colSpan={3} className="px-3 py-4 text-slate-400">
+                  <td colSpan={5} className="px-3 py-4 text-slate-400">
                     No stock rows match the current search.
                   </td>
                 </tr>
@@ -194,6 +289,7 @@ export function ProjectKitsPage() {
         </div>
       </section>
 
+      {!stockOnly && (
       <section className="glass-panel rounded-[2rem] border border-white/10 p-6 shadow-panel">
         <div className="space-y-4">
           {projects.map((project) => {
@@ -254,6 +350,81 @@ export function ProjectKitsPage() {
           })}
         </div>
       </section>
+      )}
+
+      {previewRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <section className="glass-panel w-full max-w-xl rounded-[2rem] border border-white/10 p-6 shadow-panel">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Stock Match Preview</p>
+                <h3 className="mt-2 text-xl font-semibold text-white">
+                  {previewRow.serial_number || previewRow.part_code || "Kit"}
+                </h3>
+                <p className="mt-1 text-sm text-slate-400">Matched by {previewRow.matched_by?.replace("_", " ")}</p>
+              </div>
+              <button type="button" onClick={() => setPreviewRow(null)} className="rounded-lg bg-white/10 px-3 py-2 text-sm text-white">
+                Close
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-3">
+              {Object.entries(previewRow.proposed_changes || {}).map(([field, change]) => (
+                <div key={field} className="grid gap-2 rounded-xl border border-white/10 bg-white/5 p-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.15em] text-slate-400">{field.replace("_", " ")}</p>
+                    <p className="mt-1 text-sm text-slate-400">{change.from || "(blank)"}</p>
+                  </div>
+                  <span className="text-sm text-bt-purple">to</span>
+                  <p className="text-sm font-semibold text-white">{change.to}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => setPreviewRow(null)} className="rounded-xl bg-white/10 px-4 py-2 text-sm text-white">
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => updateStockMatches("selected", [previewRow])}
+                disabled={updatingStock}
+                className="rounded-xl bg-aqua px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {updatingStock ? "Updating..." : "Update Kit"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {bulkConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <section className="glass-panel w-full max-w-lg rounded-[2rem] border border-white/10 p-6 shadow-panel">
+            <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Confirm Bulk Update</p>
+            <h3 className="mt-2 text-xl font-semibold text-white">Update valid stock matches?</h3>
+            <p className="mt-3 text-sm text-slate-300">
+              This will update {validStockMatches.length} kit{validStockMatches.length === 1 ? "" : "s"} and {proposedFieldCount} safe metadata field{proposedFieldCount === 1 ? "" : "s"}. Existing manual values will not be overwritten.
+            </p>
+            <p className="mt-2 text-sm text-slate-400">
+              Fields: {proposedFieldNames.join(", ") || "none"}
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => setBulkConfirmOpen(false)} className="rounded-xl bg-white/10 px-4 py-2 text-sm text-white">
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => updateStockMatches("all-valid")}
+                disabled={updatingStock}
+                className="rounded-xl bg-aqua px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {updatingStock ? "Updating..." : "Confirm Update All"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

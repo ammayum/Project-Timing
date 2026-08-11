@@ -101,6 +101,20 @@ create table if not exists auth_sessions (
   foreign key (employee_id) references employees(id) on delete cascade
 );
 
+create table if not exists kit_stock_update_audit (
+  id bigint auto_increment primary key,
+  actor_employee_id int not null,
+  kit_id bigint not null,
+  part_code varchar(255) null,
+  serial_number varchar(255) null,
+  matched_by varchar(32) not null,
+  old_values json not null,
+  new_values json not null,
+  created_at timestamp not null default current_timestamp,
+  foreign key (actor_employee_id) references employees(id) on delete restrict,
+  foreign key (kit_id) references kits(id) on delete restrict
+);
+
 create table if not exists project_teams (
   project_id bigint not null,
   team_id bigint not null,

@@ -11,6 +11,7 @@ import { timeEntryRoutes } from "./routes/time-entry.routes.js";
 import { kitRoutes } from "./routes/kit.routes.js";
 import { adminRoutes } from "./routes/admin.routes.js";
 import { syncRoutes } from "./routes/sync.routes.js";
+import { publicRoutes } from "./routes/public.routes.js";
 import { inventoryRoutes } from "./modules/inventory/inventory.routes.js";
 import { inventoryLegacyRoutes } from "./modules/inventory/inventory.legacy.routes.js";
 import { env } from "./config/env.js";
@@ -63,6 +64,7 @@ export function createApp() {
   app.use("/api/v1/inventory", inventoryLimiter);
   app.use("/api/time-entries/upload", sensitiveLimiter);
   app.use("/api/admin/kits/upload", sensitiveLimiter);
+  app.use("/api/public/log-vs-stock", sensitiveLimiter);
 
   app.get("/api/ready", async (_req, res, next) => {
     try {
@@ -80,6 +82,7 @@ export function createApp() {
   app.use(maintenanceGuard);
 
   app.use("/api/auth", authRoutes);
+  app.use("/api/public", publicRoutes);
   app.use("/api/time-entries", timeEntryRoutes);
   app.use("/api/kits", kitRoutes);
   app.use("/api/admin", adminRoutes);

@@ -51,7 +51,13 @@ class ApiClient {
         this.token = "";
         this.unauthorizedHandler?.();
       }
-      throw new Error(data.message || "Request failed");
+      const validationDetails = import.meta.env.DEV && data.details
+        ? Object.entries(data.details.fieldErrors || {})
+            .flatMap(([field, messages]) => (messages || []).map((message) => `${field}: ${message}`))
+            .concat(data.details.formErrors || [])
+            .join("; ")
+        : "";
+      throw new Error(validationDetails ? `${data.message}: ${validationDetails}` : data.message || "Request failed");
     }
     return data;
   }

@@ -122,6 +122,7 @@ The current Admin area supports:
 - assign multiple managers to a project
 - create kits
 - bulk import kits by CSV
+- preview and apply safe stock-report metadata updates to kits
 - inspect database counts and MySQL status
 
 ## Project Visibility Rules
@@ -154,6 +155,7 @@ For non-admin users:
 
 - `POST /api/kits/resolve`
 - `GET /api/kits/stock-report`
+- `POST /api/kits/stock-report/update` (manager/admin only)
 
 ### Admin
 

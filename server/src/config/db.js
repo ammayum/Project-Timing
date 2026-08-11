@@ -443,6 +443,7 @@ const REQUIRED_MYSQL_TABLES = [
   "kits",
   "stock_report",
   "auth_sessions",
+  "kit_stock_update_audit",
 ];
 
 const REQUIRED_MYSQL_INDEXES = [
@@ -459,6 +460,7 @@ const REQUIRED_MYSQL_INDEXES = [
   ["auth_sessions", "token_hash"],
   ["auth_sessions", "idx_auth_sessions_employee_id"],
   ["auth_sessions", "idx_auth_sessions_last_activity_at"],
+  ["kit_stock_update_audit", "PRIMARY"],
 ];
 
 export async function getProductionReadiness() {
@@ -551,6 +553,13 @@ export const pool = {
     return queryOn(engine, sql, params);
   },
 };
+
+export async function closeDatabasePools() {
+  await Promise.all([
+    mysqlPool?.end(),
+    postgresPool?.end(),
+  ]);
+}
 
 export async function withTransaction(callback) {
   if (env.devMemoryMode) {

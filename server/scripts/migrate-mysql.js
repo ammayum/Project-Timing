@@ -1,8 +1,12 @@
 import { mysqlAdminService } from "../src/services/mysql-admin.service.js";
 import { sessionRepository } from "../src/repositories/session.repository.js";
+<<<<<<< Updated upstream
 import { employeeRepository } from "../src/repositories/employee.repository.js";
 import { passwordSecurityRepository } from "../src/repositories/password-security.repository.js";
 import { inventoryRepository } from "../src/modules/inventory/inventory.repository.js";
+=======
+import { closeDatabasePools } from "../src/config/db.js";
+>>>>>>> Stashed changes
 
 try {
   const result = await mysqlAdminService.initializeDatabase();
@@ -15,4 +19,6 @@ try {
 } catch (error) {
   console.error("MySQL migration failed:", error.message);
   process.exitCode = 1;
+} finally {
+  await closeDatabasePools();
 }

@@ -1,0 +1,18 @@
+Stock management system   to stock multi vendor project kits aso support multi engineers staging and config and shipping
+
+
+manages kit- kits detail, serial, partcode, part description , user group usergroup description, manufacturer part code part creation date, created by, (store location detail) quantity
+
+location store number , aile, shelf location, bin, stock type
+
+project details  proj id , name ,  manager , contact description 
+
+
+movement of kits( kits detail, from location , to location, by who, when , 
+audit log
+users ( employee detail , name(Fname,M name ,L name ), EIN, role descrpition
+
+Couriur (tarcking details, couriur details)
+
+
+
