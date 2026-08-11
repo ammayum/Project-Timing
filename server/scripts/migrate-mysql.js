@@ -1,12 +1,10 @@
 import { mysqlAdminService } from "../src/services/mysql-admin.service.js";
 import { sessionRepository } from "../src/repositories/session.repository.js";
-<<<<<<< Updated upstream
 import { employeeRepository } from "../src/repositories/employee.repository.js";
 import { passwordSecurityRepository } from "../src/repositories/password-security.repository.js";
 import { inventoryRepository } from "../src/modules/inventory/inventory.repository.js";
-=======
+import { ensureEngineerLocationSchema } from "../src/modules/inventory/inventory.location.schema.js";
 import { closeDatabasePools } from "../src/config/db.js";
->>>>>>> Stashed changes
 
 try {
   const result = await mysqlAdminService.initializeDatabase();
@@ -14,6 +12,7 @@ try {
   await passwordSecurityRepository.ensureSchema();
   await sessionRepository.ensureTables();
   await inventoryRepository.ensureSchema();
+  await ensureEngineerLocationSchema();
   console.log(result.message);
   console.log("Authentication security and Inventory/Warehouse schemas initialized successfully.");
 } catch (error) {
