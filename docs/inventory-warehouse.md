@@ -2,18 +2,21 @@
 
 ## Scope
 
-This module extends Project Timing with Stores-controlled inventory management.
+This module extends Project Timing with Stores-controlled inventory management and controlled Engineering custody locations.
 
 It manages:
 
 - serialized project assets
 - non-serialized quantity stock
 - warehouse/store/aisle/shelf/bin locations
+- Engineer-assigned inventory locations
 - project allocation
 - project part-code generation
 - project reassignment and historical part codes
 - reservations and picking
 - Stores to Engineering custody handover
+- direct Stores moves into Engineering custody locations
+- Engineering moves into the Engineer's own assigned location
 - Engineering to Stores return
 - packing, dispatch and courier tracking
 - append-only movement and audit history
@@ -28,7 +31,7 @@ It intentionally does **not** manage:
 - purchase orders
 - supplier invoicing
 
-Engineering is represented only as a team-level stock custody destination/source.
+Engineering remains stock-custody only. Individual Engineers may have assigned inventory locations, but the system does not track their configuration/staging process.
 
 ## Serialized identity
 
@@ -68,13 +71,22 @@ A user whose team name contains `Store` or `Warehouse` can:
 
 - register serialized assets
 - maintain part/location/courier masters
+- create and assign Engineering custody locations
 - adjust quantity stock
 - reserve and pick stock
-- move stock
+- move stock between Stores locations
+- move Stores-custody kits directly into Engineering custody locations
 - create Stores -> Engineering handovers
 - accept Engineering returns
 - pack and dispatch shipments
 - record tracking events
+
+A direct Stores move into an `ENGINEERING_CUSTODY` location changes the asset to:
+
+```text
+current_custody = ENGINEERING
+stock_status = WITH_ENGINEERING
+```
 
 Administrators have Stores permissions.
 
@@ -85,13 +97,41 @@ A user whose team name contains `Engineer` can:
 - view inventory
 - view stock held by Engineering
 - receive Stores -> Engineering custody handovers
+- move an Engineering-custody kit into an `ENGINEERING_CUSTODY` location assigned to that same employee
 - create Engineering -> Stores returns
+
+Engineering users cannot move stock into another Engineer's assigned location and cannot directly move stock back into Stores locations; returns continue through the formal Engineering -> Stores return workflow.
 
 No engineer-level configuration or staging records are created.
 
 ### Managers
 
 Existing `manager` users receive inventory visibility but do not automatically receive Stores write authority unless they belong to a Stores/Warehouse team.
+
+## Engineer-assigned locations
+
+`inventory_locations` includes an optional `assigned_employee_id`.
+
+Personal Engineer locations use:
+
+```text
+location_type = ENGINEERING_CUSTODY
+assigned_employee_id = <employee id>
+```
+
+Stores can create and assign these locations from the **Kit Locations** workspace.
+
+Example:
+
+```text
+SHEF-ENG-AMMAYU
+Type: ENGINEERING_CUSTODY
+Assigned employee: Ammayu
+```
+
+A Stores user can move a kit into this location. Once the kit is in Engineering custody, Ammayu can move the kit into locations assigned to Ammayu, but not locations assigned to another Engineer.
+
+Every move creates both a movement ledger entry and an inventory audit event.
 
 ## Authentication policy
 
@@ -127,6 +167,7 @@ The migration command now initializes:
 - password history/security fields
 - sessions
 - Inventory/Warehouse schema
+- Engineer-assigned inventory location schema
 
 The server also verifies/creates the Inventory schema during startup.
 
@@ -154,7 +195,7 @@ It seeds controlled kit types:
 - `CAB` Cable
 - `PSU` Power Supply
 
-It also seeds a Sheffield warehouse and initial operational locations including storage, Engineering custody, returns, quarantine, packing and dispatch.
+The Engineer-location schema ensures the default Sheffield warehouse exists. Operational locations can then be created or assigned from the Inventory/Kit Locations workspaces.
 
 ## Legacy kit migration
 
@@ -212,6 +253,7 @@ GET /movements
 GET /handovers
 GET /shipments
 GET /audit
+GET /location-moves/meta
 ```
 
 ### Stores master data
@@ -223,6 +265,8 @@ POST /parts
 POST /warehouses
 POST /locations
 POST /couriers
+POST /engineering-locations
+POST /engineering-locations/:id/assign
 ```
 
 ### Serialized assets
@@ -231,7 +275,14 @@ POST /couriers
 POST /assets
 POST /assets/:id/reassign
 POST /movements
+POST /location-moves
 ```
+
+`POST /location-moves` is scanner-friendly and accepts either serial number or current part code.
+
+For Stores users it supports normal Stores movements and direct movement to Engineering custody locations.
+
+For Engineering users the destination must be an `ENGINEERING_CUSTODY` location assigned to the authenticated employee.
 
 Part codes are generated on the server. Clients never supply the current part code when registering an asset.
 
@@ -266,7 +317,7 @@ STORES_TO_ENGINEERING
 ENGINEERING_TO_STORES
 ```
 
-The receiving side must acknowledge the handover before custody changes.
+Formal handovers remain available where recipient acknowledgement is required. Stores may alternatively make a direct audited move into an Engineering custody location.
 
 ### Shipping
 
@@ -282,14 +333,13 @@ A `DELIVERED` tracking event moves asset custody to `PROJECT_SITE` and status to
 
 ## Frontend
 
-The main React navigation now exposes **Inventory** to:
+The main React navigation exposes **Inventory** to inventory viewers and a separate **Kit Locations** workspace to:
 
 - administrators
-- managers
 - Stores/Warehouse team users
 - Engineering team users
 
-The workspace includes:
+The Inventory workspace includes:
 
 - operational dashboard
 - global scanner/search bar
@@ -303,6 +353,14 @@ The workspace includes:
 - movement history
 - audit history
 - kit type, part, warehouse, location and courier setup
+
+The **Kit Locations** workspace includes:
+
+- scanner-first serial/part-code movement
+- Stores direct movement to Engineering locations
+- Engineer movement to personal assigned locations
+- personal Engineering location creation by Stores
+- assignment/reassignment of Engineering locations by Stores
 
 ## Scanner use
 
@@ -326,10 +384,13 @@ SERIAL: FCZ2918231
 6. Start the server.
 7. Confirm `/api/ready` is healthy.
 8. Sign in as a Stores user and open Inventory.
-9. Validate kit types and locations.
-10. Run the legacy kit migration only after reviewing project suffixes and taking a backup.
-11. Reconcile migrated serial counts with the old `kits` table.
-12. Test one complete flow: register/reserve/pick -> Engineering handover -> return -> pack -> dispatch -> delivery.
+9. Validate kit types and warehouse locations.
+10. In **Kit Locations**, create/assign Engineering custody locations to Engineers.
+11. Run the legacy kit migration only after reviewing project suffixes and taking a backup.
+12. Reconcile migrated serial counts with the old `kits` table.
+13. Test Stores moving one kit directly to an Engineer location.
+14. Sign in as that Engineer and move the kit into another location assigned to the same Engineer.
+15. Test Engineering -> Stores return, packing, dispatch and delivery.
 
 ## Operational invariants
 
@@ -340,10 +401,13 @@ The backend enforces these principles:
 - part code format is `XXXYYY-0000`
 - project reassignment generates a new part code
 - previous part codes remain searchable
-- Stores owns physical inventory operations
-- Engineering is team custody only
+- Stores owns warehouse inventory administration
+- Stores may move Stores-custody stock into Engineering custody locations
+- Engineering may move Engineering-custody kits only into locations assigned to the authenticated Engineer
+- Engineering does not gain Stores stock-adjustment, reservation, picking or shipping permissions
+- Engineering-to-Stores movement still uses the formal return workflow
 - stock cannot become negative
 - serialized assets cannot be double-reserved or double-shipped
-- handovers require recipient acknowledgement
+- handovers require recipient acknowledgement when the handover workflow is used
 - stock-changing actions create movement records
 - privileged inventory actions create audit records
