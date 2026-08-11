@@ -12,6 +12,7 @@ import { kitRoutes } from "./routes/kit.routes.js";
 import { adminRoutes } from "./routes/admin.routes.js";
 import { syncRoutes } from "./routes/sync.routes.js";
 import { inventoryRoutes } from "./modules/inventory/inventory.routes.js";
+import { inventoryLegacyRoutes } from "./modules/inventory/inventory.legacy.routes.js";
 import { env } from "./config/env.js";
 import { getProductionReadiness } from "./config/db.js";
 
@@ -84,6 +85,7 @@ export function createApp() {
   app.use("/api/admin", adminRoutes);
   app.use("/api/sync", syncRoutes);
   app.use("/api/v1/inventory", inventoryRoutes);
+  app.use("/api/v1/inventory", inventoryLegacyRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
