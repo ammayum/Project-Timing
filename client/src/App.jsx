@@ -1,9 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
-import { Boxes, ChartColumnIncreasing, Clock, Home, ShieldCheck } from "lucide-react";
+import { Boxes, ChartColumnIncreasing, Clock, Home, ShieldCheck, Warehouse } from "lucide-react";
 import { useAuth } from "./hooks/useAuth.js";
-import React from 'react';
-//import BTlogoo from "client/public/BT_Logo_Indigo_RGB1.png";
-
+import React from "react";
 
 const TimeEntryPage = lazy(() =>
   import("./pages/TimeEntryPage.jsx").then((module) => ({ default: module.TimeEntryPage }))
@@ -19,6 +17,9 @@ const ProjectKitsPage = lazy(() =>
 );
 const PerformancePage = lazy(() =>
   import("./pages/PerformancePage.jsx").then((module) => ({ default: module.PerformancePage }))
+);
+const InventoryPage = lazy(() =>
+  import("./features/inventory/InventoryPage.jsx").then((module) => ({ default: module.InventoryPage }))
 );
 
 export function App() {
@@ -40,7 +41,21 @@ export function App() {
     [auth]
   );
   const canAccessPerformance = canAccessProjectKits;
-  const defaultAuthedTab = canAccessAdmin ? "admin" : "time";
+  const canAccessInventory = useMemo(() => {
+    const teamName = String(auth?.employee?.team_name || "").toLowerCase();
+    return Boolean(
+      auth?.employee?.is_admin ||
+      auth?.employee?.role === "manager" ||
+      teamName.includes("store") ||
+      teamName.includes("warehouse") ||
+      teamName.includes("engineer")
+    );
+  }, [auth]);
+  const defaultAuthedTab = canAccessAdmin
+    ? "admin"
+    : canAccessInventory && String(auth?.employee?.team_name || "").toLowerCase().match(/store|warehouse/)
+      ? "inventory"
+      : "time";
 
   useEffect(() => {
     if (auth?.employee?.mustChangePassword) {
@@ -80,8 +95,8 @@ export function App() {
       return;
     }
 
-    if (newPassword.length < 8) {
-      setPasswordChangeError("New password must be at least 8 characters.");
+    if (newPassword.length < 12) {
+      setPasswordChangeError("New password must be at least 12 characters.");
       return;
     }
 
@@ -91,7 +106,7 @@ export function App() {
     }
 
     if (currentPassword === newPassword) {
-      setPasswordChangeError("Please choose a password different from the temporary password.");
+      setPasswordChangeError("Please choose a password different from the current password.");
       return;
     }
 
@@ -115,11 +130,7 @@ export function App() {
           <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="space-y-5">
               <p className="text-sm uppercase tracking-[0.35em] text-aqua">Project Billing System</p>
-              
-              <p className="max-w-2xl text-base text-slate-300">
-                Sign in with Login .
-              </p>
-              
+              <p className="max-w-2xl text-base text-slate-300">Sign in with your assigned username and password.</p>
               <img
                 src="/BT_Logo_Indigo_RGB1.png"
                 alt="BT logo"
@@ -177,11 +188,9 @@ export function App() {
         <section className="glass-panel-header w-full max-w-2xl rounded-[2rem] border border-white/10 p-10 shadow-panel">
           <div className="space-y-5">
             <p className="text-sm uppercase tracking-[0.35em] text-aqua">Password Update Required</p>
-            <h1 className="text-4xl font-semibold leading-tight text-white">
-              Change your temporary password to continue.
-            </h1>
+            <h1 className="text-4xl font-semibold leading-tight text-white">Change your password to continue.</h1>
             <p className="max-w-xl text-base text-slate-300">
-              This account is marked for first-login password change by an administrator.
+              Passwords expire every 90 days. New passwords must be at least 12 characters and cannot reuse the previous 12 passwords.
             </p>
           </div>
 
@@ -190,7 +199,7 @@ export function App() {
               type="password"
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
-              placeholder="Temporary password"
+              placeholder="Current password"
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none focus:border-aqua"
             />
 
@@ -198,7 +207,7 @@ export function App() {
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="New password"
+              placeholder="New password (12+ characters)"
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none focus:border-aqua"
             />
 
@@ -228,7 +237,7 @@ export function App() {
               <button
                 type="button"
                 onClick={logout}
-                className="rounded-xl bg-white/5 px-5 py-3 text-sm text-slate-100 hover:bg-white/10 transition"
+                className="rounded-xl bg-white/5 px-5 py-3 text-sm text-slate-100 transition hover:bg-white/10"
               >
                 Sign out
               </button>
@@ -255,35 +264,36 @@ export function App() {
             <button
               type="button"
               onClick={() => setActiveTab("dashboard")}
-              className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium ${
-                activeTab === "dashboard" ? "bg-white text-ink" : "bg-white/5 text-slate-200"
-              }`}
+              className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium ${activeTab === "dashboard" ? "bg-white text-ink" : "bg-white/5 text-slate-200"}`}
             >
-              <Home size={16} />
-              Home
+              <Home size={16} /> Home
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab("time")}
-              className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium ${
-                activeTab === "time" ? "bg-aqua text-ink" : "bg-white/5 text-slate-200"
-              }`}
+              className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium ${activeTab === "time" ? "bg-aqua text-white" : "bg-white/5 text-slate-200"}`}
             >
-              <Clock size={16} />
-              Timesheet
+              <Clock size={16} /> Timesheet
             </button>
+
+            {canAccessInventory && (
+              <button
+                type="button"
+                onClick={() => setActiveTab("inventory")}
+                className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium ${activeTab === "inventory" ? "bg-white text-bt-purple-darker" : "bg-white/5 text-slate-200"}`}
+              >
+                <Warehouse size={16} /> Inventory
+              </button>
+            )}
 
             {canAccessProjectKits && (
               <button
                 type="button"
                 onClick={() => setActiveTab("project-kits")}
-                className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium ${
-                  activeTab === "project-kits" ? "bg-bt-purple-light text-white" : "bg-white/5 text-slate-200"
-                }`}
+                className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium ${activeTab === "project-kits" ? "bg-bt-purple-light text-white" : "bg-white/5 text-slate-200"}`}
               >
-                <Boxes size={16} />
-                Project Kits
+                <Boxes size={16} /> Project Kits
               </button>
             )}
 
@@ -291,12 +301,9 @@ export function App() {
               <button
                 type="button"
                 onClick={() => setActiveTab("performance")}
-                className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium ${
-                  activeTab === "performance" ? "bg-bt-purple-mid text-white" : "bg-white/5 text-slate-200"
-                }`}
+                className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium ${activeTab === "performance" ? "bg-bt-purple-mid text-white" : "bg-white/5 text-slate-200"}`}
               >
-                <ChartColumnIncreasing size={16} />
-                Performance
+                <ChartColumnIncreasing size={16} /> Performance
               </button>
             )}
 
@@ -304,19 +311,16 @@ export function App() {
               <button
                 type="button"
                 onClick={() => setActiveTab("admin")}
-                className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium ${
-                  activeTab === "admin" ? "bg-flare text-ink" : "bg-white/5 text-slate-200"
-                }`}
+                className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium ${activeTab === "admin" ? "bg-flare text-white" : "bg-white/5 text-slate-200"}`}
               >
-                <ShieldCheck size={16} />
-                Admin
+                <ShieldCheck size={16} /> Admin
               </button>
             )}
 
             <button
               type="button"
               onClick={logout}
-              className="inline-flex items-center gap-2 rounded-2xl bg-white/5 px-4 py-2 text-sm text-slate-100 hover:bg-white/10 transition"
+              className="inline-flex items-center gap-2 rounded-2xl bg-white/5 px-4 py-2 text-sm text-slate-100 transition hover:bg-white/10"
             >
               Sign out
             </button>
@@ -344,6 +348,7 @@ export function App() {
           )}
 
           {activeTab === "time" && <TimeEntryPage auth={auth} />}
+          {activeTab === "inventory" && <InventoryPage auth={auth} />}
           {activeTab === "project-kits" && <ProjectKitsPage />}
           {activeTab === "performance" && <PerformancePage />}
           {activeTab === "admin" && <AdminPage auth={auth} />}
