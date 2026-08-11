@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
-import { Boxes, ChartColumnIncreasing, ClipboardCheck, ClipboardList, Clock, Home, ShieldCheck, Warehouse } from "lucide-react";
+import { Boxes, ChartColumnIncreasing, ClipboardCheck, ClipboardList, Clock, Home, MapPin, ShieldCheck, Warehouse } from "lucide-react";
 import { useAuth } from "./hooks/useAuth.js";
 import React from "react";
 
@@ -27,6 +27,9 @@ const PerformancePage = lazy(() =>
 const InventoryPage = lazy(() =>
   import("./features/inventory/InventoryPage.jsx").then((module) => ({ default: module.InventoryPage }))
 );
+const KitLocationsPage = lazy(() =>
+  import("./features/inventory/KitLocationsPage.jsx").then((module) => ({ default: module.KitLocationsPage }))
+);
 
 export function App() {
   const [activeTab, setActiveTab] = useState("time");
@@ -53,6 +56,15 @@ export function App() {
     return Boolean(
       auth?.employee?.is_admin ||
       auth?.employee?.role === "manager" ||
+      teamName.includes("store") ||
+      teamName.includes("warehouse") ||
+      teamName.includes("engineer")
+    );
+  }, [auth]);
+  const canAccessKitLocations = useMemo(() => {
+    const teamName = String(auth?.employee?.team_name || "").toLowerCase();
+    return Boolean(
+      auth?.employee?.is_admin ||
       teamName.includes("store") ||
       teamName.includes("warehouse") ||
       teamName.includes("engineer")
@@ -314,6 +326,16 @@ export function App() {
               </button>
             )}
 
+            {canAccessKitLocations && (
+              <button
+                type="button"
+                onClick={() => setActiveTab("kit-locations")}
+                className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium ${activeTab === "kit-locations" ? "bg-white text-bt-purple-darker" : "bg-white/5 text-slate-200"}`}
+              >
+                <MapPin size={16} /> Kit Locations
+              </button>
+            )}
+
             {canAccessProjectKits && (
               <button
                 type="button"
@@ -402,6 +424,7 @@ export function App() {
 
           {activeTab === "time" && <TimeEntryPage auth={auth} />}
           {activeTab === "inventory" && <InventoryPage auth={auth} />}
+          {activeTab === "kit-locations" && <KitLocationsPage auth={auth} />}
           {activeTab === "project-kits" && <ProjectKitsPage />}
           {activeTab === "stock-updates" && <StockUpdatesPage />}
           {activeTab === "log-vs-stock" && <LogVsStockPage />}
