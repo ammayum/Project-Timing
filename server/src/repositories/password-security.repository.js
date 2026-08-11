@@ -1,10 +1,7 @@
 import { getActiveReadEngine, pool } from "../config/db.js";
+import { env } from "../config/env.js";
 
-const PASSWORD_EXPIRY_DAYS = 90;
-const MAX_FAILED_LOGINS = 5;
-const LOCKOUT_MINUTES = 15;
-
-function expiresAtFromNow(days = PASSWORD_EXPIRY_DAYS) {
+function expiresAtFromNow(days = env.passwordExpiryDays) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 }
 
@@ -46,8 +43,8 @@ export const passwordSecurityRepository = {
     await this.ensureSchema();
     const [rows] = await pool.query("SELECT failed_login_count FROM employees WHERE id = ? LIMIT 1", [employeeId]);
     const failedCount = Number(rows[0]?.failed_login_count || 0) + 1;
-    const lockedUntil = failedCount >= MAX_FAILED_LOGINS
-      ? new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000)
+    const lockedUntil = failedCount >= env.passwordMaxFailedLogins
+      ? new Date(Date.now() + env.passwordLockoutMinutes * 60 * 1000)
       : null;
     await pool.query(
       `UPDATE employees SET failed_login_count = ?, locked_until = COALESCE(?, locked_until) WHERE id = ?`,
@@ -69,7 +66,7 @@ export const passwordSecurityRepository = {
     await pool.query("UPDATE employees SET must_change_password = TRUE WHERE id = ?", [employeeId]);
   },
 
-  async setPassword(employeeId, passwordHash, { mustChangePassword = false, expiryDays = PASSWORD_EXPIRY_DAYS } = {}) {
+  async setPassword(employeeId, passwordHash, { mustChangePassword = false, expiryDays = env.passwordExpiryDays } = {}) {
     await this.ensureSchema();
     const changedAt = new Date();
     const expiresAt = expiresAtFromNow(expiryDays);
@@ -97,9 +94,9 @@ export const passwordSecurityRepository = {
     }
   },
 
-  async recentPasswordHashes(employeeId, limit = 12) {
+  async recentPasswordHashes(employeeId, limit = env.passwordHistoryCount) {
     await this.ensureSchema();
-    const safeLimit = Math.min(Math.max(Number(limit) || 12, 1), 24);
+    const safeLimit = Math.min(Math.max(Number(limit) || env.passwordHistoryCount, 1), 24);
     const [rows] = await pool.query(
       `SELECT password_hash FROM password_history WHERE employee_id = ? ORDER BY created_at DESC LIMIT ?`,
       [employeeId, safeLimit],
@@ -124,12 +121,12 @@ export const passwordSecurityRepository = {
 
   policy() {
     return {
-      minimumLength: 12,
-      expiryDays: PASSWORD_EXPIRY_DAYS,
-      historyCount: 12,
-      minimumAgeDays: 1,
-      maxFailedLogins: MAX_FAILED_LOGINS,
-      lockoutMinutes: LOCKOUT_MINUTES,
+      minimumLength: env.passwordMinLength,
+      expiryDays: env.passwordExpiryDays,
+      historyCount: env.passwordHistoryCount,
+      minimumAgeDays: env.passwordMinAgeDays,
+      maxFailedLogins: env.passwordMaxFailedLogins,
+      lockoutMinutes: env.passwordLockoutMinutes,
     };
   },
 };
