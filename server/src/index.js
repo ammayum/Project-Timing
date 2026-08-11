@@ -3,6 +3,7 @@ import { env } from "./config/env.js";
 import { employeeRepository } from "./repositories/employee.repository.js";
 import { passwordSecurityRepository } from "./repositories/password-security.repository.js";
 import { inventoryRepository } from "./modules/inventory/inventory.repository.js";
+import { ensureEngineerLocationSchema } from "./modules/inventory/inventory.location.schema.js";
 import { getProductionReadiness } from "./config/db.js";
 
 const app = createApp();
@@ -11,6 +12,7 @@ async function start() {
   await employeeRepository.ensureSchema();
   await passwordSecurityRepository.ensureSchema();
   await inventoryRepository.ensureSchema();
+  await ensureEngineerLocationSchema();
 
   if (env.nodeEnv === "production") {
     const readiness = await getProductionReadiness();
