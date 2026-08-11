@@ -59,7 +59,7 @@ router.post("/logout", requireAuth, async (req, res, next) => {
 router.post(
   "/change-password",
   requireAuth,
-  validate(z.object({ body: z.object({ currentPassword: z.string().min(1), newPassword: z.string().min(12) }) })),
+  validate(z.object({ body: z.object({ currentPassword: z.string().min(1), newPassword: z.string().min(env.passwordMinLength) }) })),
   async (req, res, next) => {
     try {
       const { currentPassword, newPassword } = req.validated.body;
@@ -70,7 +70,7 @@ router.post(
 
 router.post(
   "/set-password",
-  validate(z.object({ body: z.object({ identity: z.string().min(1), password: z.string().min(12) }) })),
+  validate(z.object({ body: z.object({ identity: z.string().min(1), password: z.string().min(env.passwordMinLength) }) })),
   async (req, res, next) => {
     try {
       if (!env.devAuthBypass) throw new AppError(404, "Not available");
