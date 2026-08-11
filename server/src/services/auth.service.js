@@ -6,22 +6,13 @@ import { env } from "../config/env.js";
 import { AppError } from "../lib/app-error.js";
 import { hashSessionToken, sessionRepository } from "../repositories/session.repository.js";
 
-const MINIMUM_PASSWORD_LENGTH = 12;
-const PASSWORD_HISTORY_COUNT = 12;
-const MINIMUM_PASSWORD_AGE_MS = 24 * 60 * 60 * 1000;
-
 function createSessionToken() {
   return crypto.randomBytes(48).toString("base64url");
 }
 
 async function issueSession(employee) {
   const token = createSessionToken();
-
-  await sessionRepository.create({
-    employeeId: employee.id,
-    tokenHash: hashSessionToken(token),
-  });
-
+  await sessionRepository.create({ employeeId: employee.id, tokenHash: hashSessionToken(token) });
   return token;
 }
 
@@ -45,22 +36,23 @@ function buildAuthEmployee(employee) {
 }
 
 async function validateNewPassword(employee, newPassword) {
-  if (newPassword.length < MINIMUM_PASSWORD_LENGTH) {
-    throw new AppError(400, `Password must be at least ${MINIMUM_PASSWORD_LENGTH} characters`);
+  if (newPassword.length < env.passwordMinLength) {
+    throw new AppError(400, `Password must be at least ${env.passwordMinLength} characters`);
   }
 
-  if (!employee.must_change_password && passwordSecurityRepository.passwordAgeMs(employee) < MINIMUM_PASSWORD_AGE_MS) {
-    throw new AppError(400, "Password cannot be changed again until the minimum password age of 1 day has passed");
+  const minimumAgeMs = env.passwordMinAgeDays * 24 * 60 * 60 * 1000;
+  if (!employee.must_change_password && minimumAgeMs > 0 && passwordSecurityRepository.passwordAgeMs(employee) < minimumAgeMs) {
+    throw new AppError(400, `Password cannot be changed again until the minimum password age of ${env.passwordMinAgeDays} day(s) has passed`);
   }
 
-  const recentHashes = await passwordSecurityRepository.recentPasswordHashes(employee.id, PASSWORD_HISTORY_COUNT);
+  const recentHashes = await passwordSecurityRepository.recentPasswordHashes(employee.id, env.passwordHistoryCount);
   if (employee.password_hash && !recentHashes.includes(employee.password_hash)) {
     recentHashes.unshift(employee.password_hash);
   }
 
-  for (const previousHash of recentHashes.slice(0, PASSWORD_HISTORY_COUNT)) {
+  for (const previousHash of recentHashes.slice(0, env.passwordHistoryCount)) {
     if (await bcrypt.compare(newPassword, previousHash)) {
-      throw new AppError(400, "New password must not match any of your previous 12 passwords");
+      throw new AppError(400, `New password must not match any of your previous ${env.passwordHistoryCount} passwords`);
     }
   }
 }
@@ -78,7 +70,6 @@ export const authService = {
     }
 
     const passwordValid = await bcrypt.compare(password, employee.password_hash);
-
     if (!passwordValid) {
       await passwordSecurityRepository.recordFailedLogin(employee.id);
       throw new AppError(401, "Invalid username or password");
@@ -95,12 +86,7 @@ export const authService = {
       employee = await employeeRepository.findById(employee.id);
     }
 
-    const token = await issueSession(employee);
-
-    return {
-      token,
-      employee: buildAuthEmployee(employee),
-    };
+    return { token: await issueSession(employee), employee: buildAuthEmployee(employee) };
   },
 
   async loginWithMicrosoftProfile(profile) {
@@ -110,28 +96,19 @@ export const authService = {
       email: profile.email,
       ein: profile.ein,
     });
-
-    const token = await issueSession(employee);
-
-    return {
-      token,
-      employee: buildAuthEmployee(employee),
-    };
+    return { token: await issueSession(employee), employee: buildAuthEmployee(employee) };
   },
 
   async listDevUsers() {
     try {
       const employees = await employeeRepository.listAll();
-
       return employees.map((emp) => ({
         key: emp.sso_id || String(emp.id),
         name: emp.name,
         email: emp.email,
         ein: emp.ein,
         role: emp.role || "employee",
-        roleLabel:
-          emp.roleLabel ||
-          (emp.is_admin ? "Administrator" : emp.role === "manager" ? "Project Manager" : "Engineer"),
+        roleLabel: emp.roleLabel || (emp.is_admin ? "Administrator" : emp.role === "manager" ? "Project Manager" : "Engineer"),
         isAdmin: Boolean(emp.is_admin),
         overtimeAllowed: Boolean(emp.overtime_allowed),
       }));
@@ -142,23 +119,10 @@ export const authService = {
   },
 
   async loginWithDevUserKey(key) {
-    const ssoMap = {
-      admin: "dev-admin-user",
-      manager: "dev-manager-user",
-      engineer: "dev-engineer-user",
-    };
-
-    const ssoId = ssoMap[key] || key;
-    const employee = await employeeRepository.findBySsoId(ssoId);
-
-    if (!employee) {
-      throw new AppError(404, `User "${key}" not found`);
-    }
-
-    return {
-      token: await issueSession(employee),
-      employee: buildAuthEmployee(employee),
-    };
+    const ssoMap = { admin: "dev-admin-user", manager: "dev-manager-user", engineer: "dev-engineer-user" };
+    const employee = await employeeRepository.findBySsoId(ssoMap[key] || key);
+    if (!employee) throw new AppError(404, `User "${key}" not found`);
+    return { token: await issueSession(employee), employee: buildAuthEmployee(employee) };
   },
 
   async loginWithDevBypass() {
@@ -166,60 +130,33 @@ export const authService = {
       try {
         return await this.loginWithDevUserKey(env.devAuthDefaultUserKey);
       } catch (error) {
-        if (!(error instanceof AppError) || error.statusCode !== 404) {
-          throw error;
-        }
+        if (!(error instanceof AppError) || error.statusCode !== 404) throw error;
       }
     }
-
     const allUsers = await employeeRepository.listAll();
     const employee = allUsers[0];
-
-    if (!employee) {
-      throw new AppError(404, "No users found");
-    }
-
-    return {
-      token: await issueSession(employee),
-      employee: buildAuthEmployee(employee),
-    };
+    if (!employee) throw new AppError(404, "No users found");
+    return { token: await issueSession(employee), employee: buildAuthEmployee(employee) };
   },
 
   async setPasswordForIdentity(identity, password) {
     const employee = await employeeRepository.findByIdentity(identity);
-
-    if (!employee) {
-      throw new AppError(404, "User not found");
+    if (!employee) throw new AppError(404, "User not found");
+    if (password.length < env.passwordMinLength) {
+      throw new AppError(400, `Password must be at least ${env.passwordMinLength} characters`);
     }
-    if (password.length < MINIMUM_PASSWORD_LENGTH) {
-      throw new AppError(400, `Password must be at least ${MINIMUM_PASSWORD_LENGTH} characters`);
-    }
-
     const passwordHash = await bcrypt.hash(password, 12);
     await passwordSecurityRepository.setPassword(employee.id, passwordHash, { mustChangePassword: false });
-    const updated = await employeeRepository.findById(employee.id);
-
-    return {
-      employee: buildAuthEmployee(updated),
-    };
+    return { employee: buildAuthEmployee(await employeeRepository.findById(employee.id)) };
   },
 
   async changePassword(employeeId, currentPassword, newPassword, currentSessionId = null) {
     const employee = await employeeRepository.findById(employeeId);
-
-    if (!employee) {
-      throw new AppError(404, "User not found");
-    }
-
-    if (!employee.password_hash) {
-      throw new AppError(400, "Password not configured for this account");
-    }
+    if (!employee) throw new AppError(404, "User not found");
+    if (!employee.password_hash) throw new AppError(400, "Password not configured for this account");
 
     const passwordValid = await bcrypt.compare(currentPassword, employee.password_hash);
-
-    if (!passwordValid) {
-      throw new AppError(401, "Current password is incorrect");
-    }
+    if (!passwordValid) throw new AppError(401, "Current password is incorrect");
 
     await passwordSecurityRepository.initializeExistingPassword(employee.id, employee.password_hash, {
       mustChangePassword: Boolean(employee.must_change_password),
@@ -230,11 +167,7 @@ export const authService = {
     const passwordHash = await bcrypt.hash(newPassword, 12);
     await passwordSecurityRepository.setPassword(employee.id, passwordHash, { mustChangePassword: false });
     await sessionRepository.revokeOtherSessions(employee.id, currentSessionId, "password_changed");
-    const updated = await employeeRepository.findById(employee.id);
-
-    return {
-      employee: buildAuthEmployee(updated),
-    };
+    return { employee: buildAuthEmployee(await employeeRepository.findById(employee.id)) };
   },
 
   async findSessionByToken(token) {
