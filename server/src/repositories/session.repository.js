@@ -119,4 +119,24 @@ export const sessionRepository = {
       [nowValue(), reason, id],
     );
   },
+
+  async revokeOtherSessions(employeeId, currentSessionId, reason = "password_changed") {
+    await this.ensureTables();
+    await pool.query(
+      `UPDATE auth_sessions
+       SET revoked_at = COALESCE(revoked_at, ?), revoke_reason = COALESCE(revoke_reason, ?)
+       WHERE employee_id = ? AND id <> ? AND revoked_at IS NULL`,
+      [nowValue(), reason, employeeId, currentSessionId || ""],
+    );
+  },
+
+  async revokeAllForEmployee(employeeId, reason = "security_reset") {
+    await this.ensureTables();
+    await pool.query(
+      `UPDATE auth_sessions
+       SET revoked_at = COALESCE(revoked_at, ?), revoke_reason = COALESCE(revoke_reason, ?)
+       WHERE employee_id = ? AND revoked_at IS NULL`,
+      [nowValue(), reason, employeeId],
+    );
+  },
 };
