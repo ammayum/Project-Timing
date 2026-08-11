@@ -11,6 +11,11 @@ export async function ensureEngineerLocationSchema() {
   }
 
   await pool.query(
+    `INSERT IGNORE INTO inventory_warehouses (code, name, description)
+     VALUES ('SHEF', 'Sheffield', 'Default warehouse')`,
+  );
+
+  await pool.query(
     "ALTER TABLE inventory_locations ADD COLUMN IF NOT EXISTS assigned_employee_id INT NULL",
   );
 
