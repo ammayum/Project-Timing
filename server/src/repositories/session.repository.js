@@ -16,7 +16,7 @@ export const sessionRepository = {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS auth_sessions (
         id VARCHAR(64) PRIMARY KEY,
-        employee_id BIGINT NOT NULL,
+        employee_id INT NOT NULL,
         token_hash VARCHAR(128) NOT NULL UNIQUE,
         created_at TIMESTAMP NOT NULL,
         last_activity_at TIMESTAMP NOT NULL,
