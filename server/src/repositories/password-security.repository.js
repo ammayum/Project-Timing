@@ -5,15 +5,36 @@ function expiresAtFromNow(days = env.passwordExpiryDays) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 }
 
+async function ensureEmployeeColumn(engine, columnName, definition) {
+  if (engine === "postgres") {
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS ${columnName} ${definition}`);
+    return;
+  }
+
+  const [rows] = await pool.query(
+    `SELECT COLUMN_NAME
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'employees'
+       AND COLUMN_NAME = ?
+     LIMIT 1`,
+    [columnName],
+  );
+
+  if (!rows[0]) {
+    await pool.query(`ALTER TABLE employees ADD COLUMN ${columnName} ${definition}`);
+  }
+}
+
 export const passwordSecurityRepository = {
   async ensureSchema() {
     const engine = await getActiveReadEngine();
-    await pool.query("ALTER TABLE employees ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMP NULL");
-    await pool.query("ALTER TABLE employees ADD COLUMN IF NOT EXISTS password_expires_at TIMESTAMP NULL");
-    await pool.query("ALTER TABLE employees ADD COLUMN IF NOT EXISTS failed_login_count INT NOT NULL DEFAULT 0");
-    await pool.query("ALTER TABLE employees ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP NULL");
-    await pool.query("ALTER TABLE employees ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP NULL");
-    await pool.query("ALTER TABLE employees ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE");
+    await ensureEmployeeColumn(engine, "password_changed_at", "TIMESTAMP NULL");
+    await ensureEmployeeColumn(engine, "password_expires_at", "TIMESTAMP NULL");
+    await ensureEmployeeColumn(engine, "failed_login_count", "INT NOT NULL DEFAULT 0");
+    await ensureEmployeeColumn(engine, "locked_until", "TIMESTAMP NULL");
+    await ensureEmployeeColumn(engine, "last_login_at", "TIMESTAMP NULL");
+    await ensureEmployeeColumn(engine, "active", "BOOLEAN NOT NULL DEFAULT TRUE");
 
     if (engine === "postgres") {
       await pool.query(`
