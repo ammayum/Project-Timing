@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
 import { inventoryService } from "./inventory.service.js";
+import { inventoryLocationMoveService } from "./inventory.location-move.service.js";
 import { requireInventoryAudit, requireInventoryView, requireStoresInventory } from "./inventory.permissions.js";
 
 const router = Router();
@@ -99,8 +100,11 @@ router.post(
     reference: z.string().trim().max(255).optional(), reason: z.string().trim().min(1).max(1000),
   }) })),
   async (req, res, next) => {
-    try { res.json(await inventoryService.moveAsset(req.validated.body, req.user, requestContext(req))); }
-    catch (error) { next(error); }
+    try {
+      const payload = { ...req.validated.body };
+      delete payload.stockStatus;
+      res.json(await inventoryLocationMoveService.moveKit(payload, req.user, requestContext(req)));
+    } catch (error) { next(error); }
   },
 );
 
