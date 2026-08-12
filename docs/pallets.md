@@ -4,7 +4,7 @@
 
 Pallets are first-class physical handling units inside the Inventory & Warehouse module. A pallet groups serialized project kits so Stores and Engineering can scan and move the whole physical unit while every contained kit keeps its own serial number, project part code and movement history.
 
-Pallet membership is deliberately flexible: a kit can still be moved separately. When that happens, the movement transaction automatically removes the kit from the pallet so the pallet's live kit list and count remain accurate.
+Pallet membership is deliberately flexible: a kit can still be moved separately. When that happens, the movement transaction deducts only that kit from the pallet membership so the pallet's live kit list and count remain accurate. The pallet itself is never disbanded by a single-kit movement.
 
 ## Pallet part-code format
 
@@ -58,7 +58,7 @@ The pallet code is generated from that project's suffix. Users never manually ch
 
 A pallet has one current location and one current custody state. Kits that remain members of that pallet move with it in the same database transaction.
 
-A kit may also be moved independently. An independent kit move automatically removes that kit from pallet membership first, records the removal in membership history, and then completes the kit move.
+A kit may also be moved independently. An independent kit move deducts that one kit from pallet membership first, records the removal in membership history, and then completes the kit move. The pallet code, project, status, location and custody are not changed by that individual kit movement.
 
 ### Stores to Stores
 
@@ -87,7 +87,7 @@ Engineering users can move an Engineering-custody pallet only to an `ENGINEERING
 
 They cannot move a pallet to another Engineer's assigned location.
 
-Engineering users may also move an individual Engineering-custody kit to a location assigned to themselves. If that kit was on a pallet, it is automatically detached from the pallet first.
+Engineering users may also move an individual Engineering-custody kit to a location assigned to themselves. If that kit was on a pallet, only that kit is deducted from the pallet membership first.
 
 ### Engineering to Stores
 
@@ -105,6 +105,8 @@ The pallet detail API also returns an automatically calculated summary containin
 
 Whenever a kit is added, removed, list-edited, or independently moved away, pallet membership changes and the next pallet read shows the recalculated result.
 
+A pallet remains a valid pallet even when its current kit count reaches zero. It is not automatically deleted or closed. Stores may later add kits back to an OPEN pallet or explicitly change the pallet status according to the normal pallet workflow.
+
 ## Editing a pallet kit list
 
 Only Stores can manually edit pallet contents.
@@ -115,7 +117,7 @@ The Pallets workspace supports three editing methods:
 2. **Quick scan: add kits** — adds one or many scanned serial/part codes.
 3. **Quick scan: remove kits** — removes one or many scanned serial/part codes.
 
-The complete-list editor may be saved as an empty list to clear an OPEN pallet.
+The complete-list editor may be saved as an empty list to clear an OPEN pallet without deleting the pallet itself.
 
 A kit can belong to only one current pallet.
 
@@ -142,7 +144,7 @@ CLOSED
 
 `OPEN` allows Stores to manually change contents.
 
-`SEALED` blocks manual add/remove/list-edit actions but still allows the pallet to be physically moved. An individual kit remains movable when operationally required; such a move automatically detaches that kit from the sealed pallet so inventory location and pallet membership cannot contradict each other.
+`SEALED` blocks manual add/remove/list-edit actions but still allows the pallet to be physically moved. An individual kit remains movable when operationally required; such a move deducts only that kit from the sealed pallet so inventory location and pallet membership cannot contradict each other. The pallet remains SEALED with one fewer kit.
 
 `CLOSED` prevents further pallet movement.
 
@@ -164,24 +166,37 @@ Kits never lose their independent movement capability merely because they are on
 When a kit is moved separately from **Inventory** or **Kit Locations**:
 
 1. the system checks normal Stores/Engineering movement permissions
-2. if the kit belongs to a pallet, that membership row is removed inside the same database transaction
+2. if the kit belongs to a pallet, only that kit's membership row is removed inside the same database transaction
 3. a `REMOVE` entry is written to `inventory_pallet_membership_history`
-4. the pallet version/update timestamp is advanced
-5. the individual kit movement is completed
-6. the pallet's next live read automatically shows the revised list/count
+4. the pallet version/update timestamp is advanced so the live list refreshes
+5. the pallet code, project, status, location and custody remain unchanged
+6. the individual kit movement is completed
+7. the pallet's next live read automatically shows one fewer kit
 
 Example:
 
 ```text
 Before
 WALPLT-0001 = 24 kits
+Pallet status = OPEN
+Pallet location = SHEF-01-A03
 
 Move WALRTR-0047 separately
 
 After
 WALPLT-0001 = 23 kits
+Pallet status = OPEN
+Pallet location = SHEF-01-A03
 WALRTR-0047 = destination selected by the operator
 ```
+
+If the pallet had only one kit, moving that kit separately results in:
+
+```text
+WALPLT-0001 = 0 kits
+```
+
+The pallet still exists with the same pallet code and status. It is not disbanded automatically.
 
 Moving a whole pallet affects only the kits that are members at the time of that pallet move.
 
@@ -227,7 +242,7 @@ The Pallets workspace includes:
 - scan-to-remove kits
 - pallet label preview/print
 - OPEN / SEALED content control
-- independent kit movement with automatic pallet detachment
+- independent kit movement that deducts only the moved kit from pallet membership
 - whole-pallet movement
 - Stores to Engineering movement
 - Engineer self-location movement
