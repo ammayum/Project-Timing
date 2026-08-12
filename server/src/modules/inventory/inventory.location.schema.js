@@ -15,9 +15,20 @@ export async function ensureEngineerLocationSchema() {
      VALUES ('SHEF', 'Sheffield', 'Default warehouse')`,
   );
 
-  await pool.query(
-    "ALTER TABLE inventory_locations ADD COLUMN IF NOT EXISTS assigned_employee_id INT NULL",
+  const [columnRows] = await pool.query(
+    `SELECT COLUMN_NAME
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'inventory_locations'
+       AND COLUMN_NAME = 'assigned_employee_id'
+     LIMIT 1`,
   );
+
+  if (!columnRows[0]) {
+    await pool.query(
+      "ALTER TABLE inventory_locations ADD COLUMN assigned_employee_id INT NULL",
+    );
+  }
 
   try {
     await pool.query(
