@@ -4,6 +4,8 @@
 
 Pallets are first-class physical handling units inside the Inventory & Warehouse module. A pallet groups serialized project kits so Stores and Engineering can scan and move the whole physical unit while every contained kit keeps its own serial number, project part code and movement history.
 
+Pallet membership is deliberately flexible: a kit can still be moved separately. When that happens, the movement transaction automatically removes the kit from the pallet so the pallet's live kit list and count remain accurate.
+
 ## Pallet part-code format
 
 Pallets use the same project-linked identity principle as serialized kits:
@@ -54,9 +56,9 @@ The pallet code is generated from that project's suffix. Users never manually ch
 
 ## Location and custody rule
 
-A pallet has one current location and one current custody state. Every contained kit must be physically synchronized with the pallet before the pallet can move.
+A pallet has one current location and one current custody state. Kits that remain members of that pallet move with it in the same database transaction.
 
-When the pallet moves, all contained serialized kits move inside the same database transaction.
+A kit may also be moved independently. An independent kit move automatically removes that kit from pallet membership first, records the removal in membership history, and then completes the kit move.
 
 ### Stores to Stores
 
@@ -72,7 +74,7 @@ Custody remains `STORES`. Existing kit statuses are retained.
 Stores location -> ENGINEERING_CUSTODY location
 ```
 
-The pallet and every contained kit become:
+The pallet and every kit still on its live membership list become:
 
 ```text
 Custody: ENGINEERING
@@ -85,13 +87,35 @@ Engineering users can move an Engineering-custody pallet only to an `ENGINEERING
 
 They cannot move a pallet to another Engineer's assigned location.
 
+Engineering users may also move an individual Engineering-custody kit to a location assigned to themselves. If that kit was on a pallet, it is automatically detached from the pallet first.
+
 ### Engineering to Stores
 
 A Stores user can receive/move the physical pallet back into a Stores location. The pallet custody becomes `STORES` and the contained kits are marked `RETURNED`.
 
-## Pallet contents
+## Pallet contents are live and auto-calculated
 
-Only Stores can add or remove kits from a pallet.
+The pallet does not store a manually maintained kit count. The displayed list and count are calculated from current rows in `inventory_pallet_assets`.
+
+The pallet detail API also returns an automatically calculated summary containing:
+
+- total current kit count
+- current kit list
+- kit-type counts
+
+Whenever a kit is added, removed, list-edited, or independently moved away, pallet membership changes and the next pallet read shows the recalculated result.
+
+## Editing a pallet kit list
+
+Only Stores can manually edit pallet contents.
+
+The Pallets workspace supports three editing methods:
+
+1. **Edit complete pallet kit list** — the authoritative batch editor. The operator can paste/scan the final desired list and save it. The backend calculates which kits were added and removed.
+2. **Quick scan: add kits** — adds one or many scanned serial/part codes.
+3. **Quick scan: remove kits** — removes one or many scanned serial/part codes.
+
+The complete-list editor may be saved as an empty list to clear an OPEN pallet.
 
 A kit can belong to only one current pallet.
 
@@ -104,7 +128,7 @@ To add a kit:
 - kit must not already belong to another pallet
 - kit must not be dispatched, in transit, delivered, lost or retired
 
-Every add/remove action is written to `inventory_pallet_membership_history` and the inventory audit log.
+Every add/remove/list-edit action is written to `inventory_pallet_membership_history` and the inventory audit log.
 
 ## Open and sealed pallets
 
@@ -116,33 +140,50 @@ SEALED
 CLOSED
 ```
 
-`OPEN` allows Stores to change contents.
+`OPEN` allows Stores to manually change contents.
 
-`SEALED` locks the contents but still allows the pallet to be physically moved.
+`SEALED` blocks manual add/remove/list-edit actions but still allows the pallet to be physically moved. An individual kit remains movable when operationally required; such a move automatically detaches that kit from the sealed pallet so inventory location and pallet membership cannot contradict each other.
 
-`CLOSED` prevents further movement.
+`CLOSED` prevents further pallet movement.
 
-## Pallet movement traceability
+## Whole-pallet movement traceability
 
 A pallet movement creates:
 
 1. a pallet movement record in `inventory_pallet_movements`
-2. one standard Inventory movement containing every serialized asset on the pallet
+2. one standard Inventory movement containing every serialized asset currently on the pallet
 3. an audit event for the pallet
 4. updates to each contained asset's location, custody and applicable stock status
 
 This means Asset 360 movement history continues to work even when the device was moved as part of a pallet.
 
-## Individual kit movement protection
+## Individual kit movement
 
-The Kit Locations workflow rejects an individual location move if the kit is currently on a pallet.
+Kits never lose their independent movement capability merely because they are on a pallet.
 
-The operator must either:
+When a kit is moved separately from **Inventory** or **Kit Locations**:
 
-- move the whole pallet, or
-- have Stores open the pallet and remove the kit first
+1. the system checks normal Stores/Engineering movement permissions
+2. if the kit belongs to a pallet, that membership row is removed inside the same database transaction
+3. a `REMOVE` entry is written to `inventory_pallet_membership_history`
+4. the pallet version/update timestamp is advanced
+5. the individual kit movement is completed
+6. the pallet's next live read automatically shows the revised list/count
 
-This prevents the physical pallet location from diverging from the location recorded on its contents.
+Example:
+
+```text
+Before
+WALPLT-0001 = 24 kits
+
+Move WALRTR-0047 separately
+
+After
+WALPLT-0001 = 23 kits
+WALRTR-0047 = destination selected by the operator
+```
+
+Moving a whole pallet affects only the kits that are members at the time of that pallet move.
 
 ## API
 
@@ -161,6 +202,7 @@ GET  /pallets/:id
 POST /pallets
 POST /pallets/:id/items
 POST /pallets/:id/items/remove
+POST /pallets/:id/items/sync
 POST /pallets/:id/status
 POST /pallets/:id/move
 ```
@@ -178,12 +220,14 @@ The Pallets workspace includes:
 - Stores pallet creation
 - automatic `XXXPLT-0000` generation
 - optional initial kit scanning
-- pallet list and status
-- pallet label preview/print
-- detailed serialized contents
+- live auto-calculated pallet list and kit count
+- kit-type count summary
+- complete pallet-list editor
 - scan-to-add kits
 - scan-to-remove kits
+- pallet label preview/print
 - OPEN / SEALED content control
+- independent kit movement with automatic pallet detachment
 - whole-pallet movement
 - Stores to Engineering movement
 - Engineer self-location movement
@@ -203,7 +247,7 @@ Custody:  STORES
 Contents: 24 serialized kits
 ```
 
-The printed pallet label intentionally shows the pallet code. Individual kit labels remain unchanged.
+The printed pallet label intentionally shows the pallet code and live kit count. Individual kit labels remain unchanged.
 
 ## Database tables
 
