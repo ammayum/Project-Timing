@@ -1,14 +1,16 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRightLeft,
   Boxes,
+  ListChecks,
   Lock,
   MapPin,
   Package,
   Plus,
   Printer,
   RefreshCw,
+  Save,
   ScanLine,
   Search,
   Unlock,
@@ -91,7 +93,7 @@ function printPalletLabel(pallet, itemCount) {
       <div>Location<br><span class="value">${escapeHtml(pallet.location_code)}</span></div>
       <div>Custody<br><span class="value">${escapeHtml(pallet.current_custody)}</span></div>
     </div>
-    <div class="hint">Scan/search this pallet using the pallet code. Individual kits retain their own serial numbers and XXXYYY-0000 part codes.</div>
+    <div class="hint">Pallet contents are calculated from live membership. Kits keep their own serial/part code and may be moved separately, which automatically removes them from this pallet.</div>
     <button onclick="window.print()" style="margin-top:20px;padding:10px 18px">Print</button>
   </div></body></html>`);
   popup.document.close();
@@ -106,6 +108,7 @@ export function PalletsPage({ auth }) {
   const [createForm, setCreateForm] = useState({ projectId: "", locationId: "", description: "", identifiers: "" });
   const [addForm, setAddForm] = useState({ identifiers: "", reason: "Add kits to pallet" });
   const [removeForm, setRemoveForm] = useState({ identifiers: "", reason: "Remove kits from pallet" });
+  const [editList, setEditList] = useState("");
   const [moveForm, setMoveForm] = useState({ toLocationId: "", reference: "", reason: "Pallet location movement" });
 
   const metaQuery = useQuery({
@@ -127,6 +130,8 @@ export function PalletsPage({ auth }) {
     onSuccess: async (data, variables) => {
       setNotice({ tone: "success", text: variables.successMessage || "Pallet updated." });
       if (data?.pallet?.id) setSelectedPalletId(data.pallet.id);
+      setAddForm((current) => ({ ...current, identifiers: "" }));
+      setRemoveForm((current) => ({ ...current, identifiers: "" }));
       await queryClient.invalidateQueries({ queryKey: ["inventory"] });
     },
     onError: (error) => setNotice({ tone: "error", text: error.message || "Pallet operation failed." }),
@@ -138,6 +143,12 @@ export function PalletsPage({ auth }) {
   const detail = detailQuery.data || {};
   const selected = detail.pallet;
   const items = detail.items || [];
+  const calculatedCount = Number(detail.summary?.itemCount ?? items.length);
+
+  useEffect(() => {
+    const loadedItems = detailQuery.data?.items || [];
+    setEditList(loadedItems.map((item) => item.part_code).join("\n"));
+  }, [selectedPalletId, detailQuery.data]);
 
   const validProjects = useMemo(
     () => (meta.projects || []).filter((project) => /^[A-Z0-9]{3}$/.test(String(project.suffix || "").toUpperCase())),
@@ -148,6 +159,7 @@ export function PalletsPage({ auth }) {
     () => (meta.locations || []).filter((location) => access.mode === "STORES" && location.location_type !== "ENGINEERING_HANDOVER"),
     [meta.locations, access.mode],
   );
+  const editedIdentifiers = useMemo(() => parseIdentifiers(editList), [editList]);
 
   const run = (path, body, successMessage) => mutation.mutate({ path, body, successMessage });
 
@@ -178,7 +190,7 @@ export function PalletsPage({ auth }) {
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-bt-purple-lightest">Pallet Handling Units</p>
               <h2 className="mt-2 text-3xl font-semibold">Project-linked pallet control</h2>
               <p className="mt-2 max-w-3xl text-sm text-white/80">
-                A pallet receives its own <span className="font-mono font-semibold text-white">XXXPLT-0000</span> code. Every kit inside still retains its permanent serial number and project-specific <span className="font-mono">XXXYYY-0000</span> part code.
+                A pallet receives its own <span className="font-mono font-semibold text-white">XXXPLT-0000</span> code. The kit list and count are calculated from live pallet membership. Every kit keeps its own serial number and <span className="font-mono">XXXYYY-0000</span> part code and can still be moved separately.
               </p>
             </div>
             <div className="rounded-2xl bg-white/10 px-4 py-3 text-sm">
@@ -250,29 +262,44 @@ export function PalletsPage({ auth }) {
               <div className="rounded-2xl bg-gradient-to-br from-bt-purple-darker to-bt-purple p-6 text-white">
                 <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                   <div><p className="text-xs font-semibold uppercase tracking-[0.25em] text-white/65">Pallet Part Code</p><p className="mt-2 font-mono text-4xl font-bold tracking-wide">{selected.pallet_code}</p><p className="mt-3 text-sm text-white/80">{selected.project_code} · {selected.project_name}</p></div>
-                  <div className="flex flex-wrap gap-2"><Pill value={selected.pallet_status} /><Pill value={selected.current_custody} /><button type="button" className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-bt-purple-darker" onClick={() => printPalletLabel(selected, items.length)}><Printer size={16} /> Print Label</button></div>
+                  <div className="flex flex-wrap gap-2"><Pill value={selected.pallet_status} /><Pill value={selected.current_custody} /><button type="button" className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-bt-purple-darker" onClick={() => printPalletLabel(selected, calculatedCount)}><Printer size={16} /> Print Label</button></div>
                 </div>
-                <div className="mt-5 grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-white/10 p-3"><p className="text-xs text-white/60">Contents</p><p className="mt-1 text-xl font-semibold">{items.length} kits</p></div><div className="rounded-xl bg-white/10 p-3"><p className="text-xs text-white/60">Location</p><p className="mt-1 font-mono font-semibold">{selected.location_code}</p></div><div className="rounded-xl bg-white/10 p-3"><p className="text-xs text-white/60">Project suffix</p><p className="mt-1 font-mono text-xl font-semibold">{selected.project_suffix}</p></div></div>
+                <div className="mt-5 grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-white/10 p-3"><p className="text-xs text-white/60">Auto-calculated contents</p><p className="mt-1 text-xl font-semibold">{calculatedCount} kits</p></div><div className="rounded-xl bg-white/10 p-3"><p className="text-xs text-white/60">Location</p><p className="mt-1 font-mono font-semibold">{selected.location_code}</p></div><div className="rounded-xl bg-white/10 p-3"><p className="text-xs text-white/60">Project suffix</p><p className="mt-1 font-mono text-xl font-semibold">{selected.project_suffix}</p></div></div>
               </div>
 
               <div>
-                <div className="flex items-center justify-between gap-3"><h4 className="font-semibold text-bt-purple-darker">Pallet contents</h4><span className="text-xs text-bt-grey-600">Individual kit identity remains unchanged</span></div>
+                <div className="flex flex-wrap items-center justify-between gap-3"><div><h4 className="font-semibold text-bt-purple-darker">Pallet contents</h4><p className="text-xs text-bt-grey-600">Calculated automatically from current pallet membership.</p></div><div className="flex flex-wrap gap-2">{Object.entries(detail.summary?.kitTypeCounts || {}).map(([code, count]) => <span key={code} className="rounded-full bg-bt-purple-lightest/50 px-2.5 py-1 text-xs font-semibold text-bt-purple-darker">{code} {count}</span>)}</div></div>
                 <div className="mt-3 overflow-x-auto rounded-xl border border-bt-purple-lightest">
-                  <table className="min-w-full text-sm"><thead className="bg-bt-purple-lightest/25"><tr><th className="px-3 py-2 text-left">Part Code</th><th className="px-3 py-2 text-left">Serial</th><th className="px-3 py-2 text-left">Kit</th><th className="px-3 py-2 text-left">Status</th></tr></thead><tbody className="divide-y divide-bt-grey-200">{items.map((item) => <tr key={item.asset_id}><td className="px-3 py-2 font-mono font-semibold">{item.part_code}</td><td className="px-3 py-2 font-mono">{item.serial_number}</td><td className="px-3 py-2">{item.kit_type_code} · {item.part_description}</td><td className="px-3 py-2"><Pill value={item.stock_status} /></td></tr>)}</tbody></table>
+                  <table className="min-w-full text-sm"><thead className="bg-bt-purple-lightest/25"><tr><th className="px-3 py-2 text-left">Part Code</th><th className="px-3 py-2 text-left">Serial</th><th className="px-3 py-2 text-left">Kit</th><th className="px-3 py-2 text-left">Status</th></tr></thead><tbody className="divide-y divide-bt-grey-200">{items.length ? items.map((item) => <tr key={item.asset_id}><td className="px-3 py-2 font-mono font-semibold">{item.part_code}</td><td className="px-3 py-2 font-mono">{item.serial_number}</td><td className="px-3 py-2">{item.kit_type_code} · {item.part_description}</td><td className="px-3 py-2"><Pill value={item.stock_status} /></td></tr>) : <tr><td colSpan="4" className="px-3 py-8 text-center text-bt-grey-600">This pallet currently has no kits.</td></tr>}</tbody></table>
                 </div>
               </div>
 
               {access.canManageContents ? (
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <form className="rounded-xl border border-bt-purple-lightest p-4" onSubmit={(event) => { event.preventDefault(); run(`/v1/inventory/pallets/${selected.id}/items`, { identifiers: parseIdentifiers(addForm.identifiers), reason: addForm.reason }, "Kits added to pallet."); }}><h4 className="font-semibold text-bt-purple-darker">Add kits</h4><textarea required className={`${inputClass} mt-3 min-h-24 font-mono`} value={addForm.identifiers} onChange={(event) => setAddForm({ ...addForm, identifiers: event.target.value })} placeholder="Scan serial / part codes" /><button disabled={mutation.isPending || selected.pallet_status !== "OPEN"} className={`${primaryButton} mt-3`} type="submit"><ScanLine size={16} /> Add to Pallet</button></form>
-                  <form className="rounded-xl border border-bt-purple-lightest p-4" onSubmit={(event) => { event.preventDefault(); run(`/v1/inventory/pallets/${selected.id}/items/remove`, { identifiers: parseIdentifiers(removeForm.identifiers), reason: removeForm.reason }, "Kits removed from pallet."); }}><h4 className="font-semibold text-bt-purple-darker">Remove kits</h4><textarea required className={`${inputClass} mt-3 min-h-24 font-mono`} value={removeForm.identifiers} onChange={(event) => setRemoveForm({ ...removeForm, identifiers: event.target.value })} placeholder="Scan serial / part codes" /><button disabled={mutation.isPending || selected.pallet_status !== "OPEN"} className={`${secondaryButton} mt-3`} type="submit">Remove from Pallet</button></form>
+                <div className="space-y-4">
+                  <form className="rounded-2xl border-2 border-bt-purple-light bg-bt-purple-lightest/10 p-5" onSubmit={(event) => { event.preventDefault(); run(`/v1/inventory/pallets/${selected.id}/items/sync`, { identifiers: editedIdentifiers, reason: "Complete pallet kit list edited" }, "Pallet kit list saved and recalculated."); }}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="flex items-start gap-3"><div className="rounded-xl bg-bt-purple p-2 text-white"><ListChecks size={19} /></div><div><h4 className="font-semibold text-bt-purple-darker">Edit complete pallet kit list</h4><p className="mt-1 text-xs text-bt-grey-600">This is the authoritative list. Add a code to attach a kit; remove a line to detach it. Saving recalculates the pallet automatically.</p></div></div>
+                      <div className="rounded-xl bg-white px-3 py-2 text-right shadow-sm"><p className="text-[11px] uppercase tracking-wide text-bt-grey-600">Edited count</p><p className="text-xl font-semibold text-bt-purple-darker">{editedIdentifiers.length}</p></div>
+                    </div>
+                    <textarea className={`${inputClass} mt-4 min-h-52 font-mono`} value={editList} onChange={(event) => setEditList(event.target.value)} placeholder="One serial number or part code per line. Leave empty to clear the pallet." />
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-bt-grey-600">New kits must match this pallet’s project, location and custody. A separately moved kit is automatically removed from this list.</p><button disabled={mutation.isPending || selected.pallet_status !== "OPEN"} className={primaryButton} type="submit"><Save size={16} /> Save Pallet List</button></div>
+                  </form>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <form className="rounded-xl border border-bt-purple-lightest p-4" onSubmit={(event) => { event.preventDefault(); run(`/v1/inventory/pallets/${selected.id}/items`, { identifiers: parseIdentifiers(addForm.identifiers), reason: addForm.reason }, "Kits added to pallet."); }}><h4 className="font-semibold text-bt-purple-darker">Quick scan: add kits</h4><textarea required className={`${inputClass} mt-3 min-h-24 font-mono`} value={addForm.identifiers} onChange={(event) => setAddForm({ ...addForm, identifiers: event.target.value })} placeholder="Scan serial / part codes" /><button disabled={mutation.isPending || selected.pallet_status !== "OPEN"} className={`${primaryButton} mt-3`} type="submit"><ScanLine size={16} /> Add to Pallet</button></form>
+                    <form className="rounded-xl border border-bt-purple-lightest p-4" onSubmit={(event) => { event.preventDefault(); run(`/v1/inventory/pallets/${selected.id}/items/remove`, { identifiers: parseIdentifiers(removeForm.identifiers), reason: removeForm.reason }, "Kits removed from pallet."); }}><h4 className="font-semibold text-bt-purple-darker">Quick scan: remove kits</h4><textarea required className={`${inputClass} mt-3 min-h-24 font-mono`} value={removeForm.identifiers} onChange={(event) => setRemoveForm({ ...removeForm, identifiers: event.target.value })} placeholder="Scan serial / part codes" /><button disabled={mutation.isPending || selected.pallet_status !== "OPEN"} className={`${secondaryButton} mt-3`} type="submit">Remove from Pallet</button></form>
+                  </div>
                 </div>
               ) : null}
 
-              <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
-                <form className="rounded-xl border border-bt-purple-lightest p-4" onSubmit={(event) => { event.preventDefault(); run(`/v1/inventory/pallets/${selected.id}/move`, { ...moveForm, toLocationId: Number(moveForm.toLocationId) }, "Pallet and all contained kits moved."); }}><div className="flex items-start gap-3"><MapPin size={20} className="text-bt-purple" /><div><h4 className="font-semibold text-bt-purple-darker">Move entire pallet</h4><p className="text-xs text-bt-grey-600">One pallet transaction writes an item-level movement for every contained kit.</p></div></div><div className="mt-4 grid gap-3 md:grid-cols-2"><Field label="Destination"><select required className={inputClass} value={moveForm.toLocationId} onChange={(event) => setMoveForm({ ...moveForm, toLocationId: event.target.value })}><option value="">Select destination</option>{moveLocations.filter((location) => Number(location.id) !== Number(selected.current_location_id)).map((location) => <option key={location.id} value={location.id}>{location.location_code} · {location.location_type}{location.assigned_employee_name ? ` · ${location.assigned_employee_name}` : ""}</option>)}</select></Field><Field label="Reference"><input className={inputClass} value={moveForm.reference} onChange={(event) => setMoveForm({ ...moveForm, reference: event.target.value })} /></Field><div className="md:col-span-2"><Field label="Reason"><textarea required className={inputClass} value={moveForm.reason} onChange={(event) => setMoveForm({ ...moveForm, reason: event.target.value })} /></Field></div></div><button disabled={mutation.isPending || !access.canMove} className={`${primaryButton} mt-3`} type="submit"><ArrowRightLeft size={16} /> Move Pallet</button></form>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                <strong>Individual movement stays available:</strong> a kit can be scanned and moved separately from Inventory or Kit Locations. If it currently belongs to this pallet, the movement transaction automatically removes its pallet membership and the pallet count/list recalculates.
+              </div>
 
-                {access.canManageContents ? <div className="rounded-xl border border-bt-purple-lightest p-4"><h4 className="font-semibold text-bt-purple-darker">Contents lock</h4><p className="mt-1 max-w-xs text-xs text-bt-grey-600">Seal a completed pallet to prevent kits being added or removed while it is being handled.</p>{selected.pallet_status === "OPEN" ? <button type="button" disabled={mutation.isPending} onClick={() => run(`/v1/inventory/pallets/${selected.id}/status`, { status: "SEALED" }, "Pallet sealed.")} className={`${secondaryButton} mt-4`}><Lock size={16} /> Seal</button> : selected.pallet_status === "SEALED" ? <button type="button" disabled={mutation.isPending} onClick={() => run(`/v1/inventory/pallets/${selected.id}/status`, { status: "OPEN" }, "Pallet reopened.")} className={`${secondaryButton} mt-4`}><Unlock size={16} /> Reopen</button> : null}</div> : null}
+              <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
+                <form className="rounded-xl border border-bt-purple-lightest p-4" onSubmit={(event) => { event.preventDefault(); run(`/v1/inventory/pallets/${selected.id}/move`, { ...moveForm, toLocationId: Number(moveForm.toLocationId) }, "Pallet and all contained kits moved."); }}><div className="flex items-start gap-3"><MapPin size={20} className="text-bt-purple" /><div><h4 className="font-semibold text-bt-purple-darker">Move entire pallet</h4><p className="text-xs text-bt-grey-600">Moves only the kits currently calculated as members of this pallet.</p></div></div><div className="mt-4 grid gap-3 md:grid-cols-2"><Field label="Destination"><select required className={inputClass} value={moveForm.toLocationId} onChange={(event) => setMoveForm({ ...moveForm, toLocationId: event.target.value })}><option value="">Select destination</option>{moveLocations.filter((location) => Number(location.id) !== Number(selected.current_location_id)).map((location) => <option key={location.id} value={location.id}>{location.location_code} · {location.location_type}{location.assigned_employee_name ? ` · ${location.assigned_employee_name}` : ""}</option>)}</select></Field><Field label="Reference"><input className={inputClass} value={moveForm.reference} onChange={(event) => setMoveForm({ ...moveForm, reference: event.target.value })} /></Field><div className="md:col-span-2"><Field label="Reason"><textarea required className={inputClass} value={moveForm.reason} onChange={(event) => setMoveForm({ ...moveForm, reason: event.target.value })} /></Field></div></div><button disabled={mutation.isPending || !access.canMove} className={`${primaryButton} mt-3`} type="submit"><ArrowRightLeft size={16} /> Move Pallet</button></form>
+
+                {access.canManageContents ? <div className="rounded-xl border border-bt-purple-lightest p-4"><h4 className="font-semibold text-bt-purple-darker">Contents lock</h4><p className="mt-1 max-w-xs text-xs text-bt-grey-600">Seal a completed pallet to prevent manual list edits while it is being handled. Individual kit movement still detaches a moved kit automatically.</p>{selected.pallet_status === "OPEN" ? <button type="button" disabled={mutation.isPending} onClick={() => run(`/v1/inventory/pallets/${selected.id}/status`, { status: "SEALED" }, "Pallet sealed.")} className={`${secondaryButton} mt-4`}><Lock size={16} /> Seal</button> : selected.pallet_status === "SEALED" ? <button type="button" disabled={mutation.isPending} onClick={() => run(`/v1/inventory/pallets/${selected.id}/status`, { status: "OPEN" }, "Pallet reopened.")} className={`${secondaryButton} mt-4`}><Unlock size={16} /> Reopen</button> : null}</div> : null}
               </div>
 
               <div><h4 className="font-semibold text-bt-purple-darker">Pallet movement history</h4><div className="mt-3 space-y-2">{(detail.movements || []).length ? detail.movements.map((movement) => <div key={movement.id} className="rounded-xl border border-bt-purple-lightest p-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-mono font-semibold">{movement.from_location_code} → {movement.to_location_code}</span><span className="text-xs text-bt-grey-600">{fmtDate(movement.moved_at)}</span></div><p className="mt-1 text-xs text-bt-grey-600">{movement.from_custody} → {movement.to_custody} · {movement.performed_by_name} · {movement.reason || "Pallet movement"}</p></div>) : <p className="text-sm text-bt-grey-600">No pallet movements recorded yet.</p>}</div></div>
@@ -282,7 +309,7 @@ export function PalletsPage({ auth }) {
       </div>
 
       <section className="rounded-2xl border border-bt-purple-lightest bg-bt-grey-50 p-5 text-sm text-bt-grey-600">
-        <strong className="text-bt-purple-darker">Identity rule:</strong> pallet <code>WALPLT-0001</code> may contain kits such as <code>WALRTR-0047</code> and <code>WALSWI-0018</code>. Moving the pallet never replaces or changes those individual kit part codes.
+        <strong className="text-bt-purple-darker">Identity rule:</strong> pallet <code>WALPLT-0001</code> may contain kits such as <code>WALRTR-0047</code> and <code>WALSWI-0018</code>. The pallet list is live, editable and auto-calculated. Moving one kit separately removes only that kit from the pallet; moving the pallet moves the kits that remain on its live list.
       </section>
     </div>
   );
