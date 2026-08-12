@@ -58,10 +58,13 @@ async function loadAssignedLocation(tx, locationId, { forUpdate = false } = {}) 
 async function loadAssetByIdentifier(tx, identifier) {
   const value = String(identifier || "").trim();
   const [rows] = await tx.query(
-    `SELECT a.*, ip.part_description, kt.code AS kit_type_code
+    `SELECT a.*, ip.part_description, kt.code AS kit_type_code,
+            p.id AS pallet_id, p.pallet_code
      FROM inventory_assets a
      INNER JOIN inventory_parts ip ON ip.id = a.inventory_part_id
      INNER JOIN inventory_kit_types kt ON kt.id = ip.kit_type_id
+     LEFT JOIN inventory_pallet_assets pa ON pa.asset_id = a.id
+     LEFT JOIN inventory_pallets p ON p.id = pa.pallet_id
      WHERE a.serial_number = ? OR a.part_code = ?
      LIMIT 1 FOR UPDATE`,
     [value, value],
@@ -245,6 +248,9 @@ export const inventoryLocationMoveService = {
       const asset = await loadAssetByIdentifier(tx, payload.identifier);
       if (!asset) {
         throw new AppError(404, "Kit not found by serial number or part code");
+      }
+      if (asset.pallet_id) {
+        throw new AppError(409, `Kit is currently on pallet ${asset.pallet_code}. Move the pallet or remove the kit from the pallet before moving it individually.`);
       }
 
       const destination = await loadAssignedLocation(tx, payload.toLocationId, { forUpdate: true });
