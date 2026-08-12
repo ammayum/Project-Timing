@@ -8,6 +8,7 @@ import { inventoryPalletService } from "./inventory.pallet.service.js";
 const router = Router();
 const idSchema = z.coerce.number().int().positive();
 const identifiersSchema = z.array(z.string().trim().min(1)).min(1).max(500);
+const editableIdentifiersSchema = z.array(z.string().trim().min(1)).max(500).default([]);
 const optionalText = z.string().trim().max(1000).optional().nullable();
 
 function requestContext(req) {
@@ -102,6 +103,22 @@ router.post(
   async (req, res, next) => {
     try {
       res.json(await inventoryPalletService.removeItems(req.validated.params.id, req.validated.body, req.user, requestContext(req)));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+router.post(
+  "/pallets/:id/items/sync",
+  requireStoresInventory,
+  validate(z.object({
+    params: z.object({ id: idSchema }),
+    body: z.object({ identifiers: editableIdentifiersSchema, reason: optionalText }),
+  })),
+  async (req, res, next) => {
+    try {
+      res.json(await inventoryPalletService.syncItems(req.validated.params.id, req.validated.body, req.user, requestContext(req)));
     } catch (error) {
       next(error);
     }
