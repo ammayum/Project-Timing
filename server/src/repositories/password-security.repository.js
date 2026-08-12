@@ -19,7 +19,7 @@ export const passwordSecurityRepository = {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS password_history (
           id BIGSERIAL PRIMARY KEY,
-          employee_id BIGINT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+          employee_id INT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
           password_hash VARCHAR(512) NOT NULL,
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -29,7 +29,7 @@ export const passwordSecurityRepository = {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS password_history (
           id BIGINT AUTO_INCREMENT PRIMARY KEY,
-          employee_id BIGINT NOT NULL,
+          employee_id INT NOT NULL,
           password_hash VARCHAR(512) NOT NULL,
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           INDEX idx_password_history_employee (employee_id, created_at),
