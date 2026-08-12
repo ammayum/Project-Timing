@@ -38,4 +38,10 @@ export default [
       "no-unused-vars": "off",
     },
   },
+  {
+    files: ["src/features/inventory/InventoryPage.jsx"],
+    rules: {
+      "no-extra-boolean-cast": "off",
+    },
+  },
 ];

@@ -1,12 +1,20 @@
 import { createApp } from "./app.js";
 import { env } from "./config/env.js";
 import { employeeRepository } from "./repositories/employee.repository.js";
+import { passwordSecurityRepository } from "./repositories/password-security.repository.js";
+import { inventoryRepository } from "./modules/inventory/inventory.repository.js";
+import { ensureEngineerLocationSchema } from "./modules/inventory/inventory.location.schema.js";
+import { ensurePalletSchema } from "./modules/inventory/inventory.pallet.schema.js";
 import { getProductionReadiness } from "./config/db.js";
 
 const app = createApp();
 
 async function start() {
   await employeeRepository.ensureSchema();
+  await passwordSecurityRepository.ensureSchema();
+  await inventoryRepository.ensureSchema();
+  await ensureEngineerLocationSchema();
+  await ensurePalletSchema();
 
   if (env.nodeEnv === "production") {
     const readiness = await getProductionReadiness();
@@ -15,7 +23,7 @@ async function start() {
     }
   }
 
-  app.listen(env.port, '0.0.0.0', () => {
+  app.listen(env.port, "0.0.0.0", () => {
     console.log(`Project Billing System API listening on port ${env.port}`);
   });
 }

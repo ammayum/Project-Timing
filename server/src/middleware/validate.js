@@ -10,6 +10,9 @@ export function validate(schema) {
     });
 
     if (!result.success) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("Request validation failed", req.method, req.originalUrl, result.error.flatten());
+      }
       return next(new AppError(400, "Validation failed", result.error.flatten()));
     }
 

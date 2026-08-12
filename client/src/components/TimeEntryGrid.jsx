@@ -99,10 +99,7 @@ export function TimeEntryGrid({
   maxWorkingHours = 7.5,
   overtimeExceeded,
   inlineError,
-  onResolveKits,
-  auth,
 }) {
-  const isManagerOrAdmin = Boolean(auth?.employee?.is_admin || auth?.employee?.role === "manager");
   const overlapIndexes = useMemo(() => validateRowOverlap(rows), [rows]);
   const projectOptions = useMemo(
     () =>
@@ -209,24 +206,13 @@ export function TimeEntryGrid({
                   </td>
 
                   <td className="px-3 py-3">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={row.kits}
-                        onChange={(event) => updateRow(index, "kits", event.target.value)}
-                        placeholder="SR123 PC456"
-                        className="w-full rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-2"
-                      />
-                      {isManagerOrAdmin && row.kits && row.kits.trim() && (
-                        <button
-                          type="button"
-                          onClick={() => onResolveKits(row.kits)}
-                          className="rounded-xl bg-aqua/10 px-3 py-2 text-xs font-semibold text-aqua transition hover:bg-aqua/20"
-                        >
-                          Resolve
-                        </button>
-                      )}
-                    </div>
+                    <input
+                      type="text"
+                      value={row.kits}
+                      onChange={(event) => updateRow(index, "kits", event.target.value)}
+                      placeholder="SR123 PC456"
+                      className="w-full rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-2"
+                    />
                   </td>
 
                   <td className="px-3 py-3">

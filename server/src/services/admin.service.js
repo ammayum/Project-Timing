@@ -175,7 +175,7 @@ export const adminService = {
       : null;
 
     const user = await employeeRepository.upsertManaged({
-      sso_id: payload.sso_id,
+      sso_id: payload.sso_id.trim(),
       name: payload.name,
       email: payload.email,
       ein: payload.ein,

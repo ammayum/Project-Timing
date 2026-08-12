@@ -16,7 +16,7 @@ export const sessionRepository = {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS auth_sessions (
         id VARCHAR(64) PRIMARY KEY,
-        employee_id BIGINT NOT NULL,
+        employee_id INT NOT NULL,
         token_hash VARCHAR(128) NOT NULL UNIQUE,
         created_at TIMESTAMP NOT NULL,
         last_activity_at TIMESTAMP NOT NULL,
@@ -117,6 +117,26 @@ export const sessionRepository = {
       WHERE id = ?
       `,
       [nowValue(), reason, id],
+    );
+  },
+
+  async revokeOtherSessions(employeeId, currentSessionId, reason = "password_changed") {
+    await this.ensureTables();
+    await pool.query(
+      `UPDATE auth_sessions
+       SET revoked_at = COALESCE(revoked_at, ?), revoke_reason = COALESCE(revoke_reason, ?)
+       WHERE employee_id = ? AND id <> ? AND revoked_at IS NULL`,
+      [nowValue(), reason, employeeId, currentSessionId || ""],
+    );
+  },
+
+  async revokeAllForEmployee(employeeId, reason = "security_reset") {
+    await this.ensureTables();
+    await pool.query(
+      `UPDATE auth_sessions
+       SET revoked_at = COALESCE(revoked_at, ?), revoke_reason = COALESCE(revoke_reason, ?)
+       WHERE employee_id = ? AND revoked_at IS NULL`,
+      [nowValue(), reason, employeeId],
     );
   },
 };

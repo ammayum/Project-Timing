@@ -165,7 +165,7 @@ router.post(
   validate(
     z.object({
       body: z.object({
-        sso_id: z.string().min(1),
+        sso_id: z.string().trim().min(1, "SSO ID / Username is required"),
         name: z.string().min(1),
         email: z.string().email(),
         ein: optionalEinSchema,

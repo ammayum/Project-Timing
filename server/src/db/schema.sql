@@ -79,6 +79,38 @@ create table if not exists app_settings (
   value text not null
 );
 
+create table if not exists stock_report (
+  part_code text,
+  serial_number text,
+  product_name text,
+  part_description text,
+  user_group text,
+  make text,
+  model text
+);
+
+create table if not exists auth_sessions (
+  id text primary key,
+  employee_id bigint not null references employees(id) on delete cascade,
+  token_hash text not null unique,
+  created_at timestamptz not null,
+  last_activity_at timestamptz not null,
+  revoked_at timestamptz,
+  revoke_reason text
+);
+
+create table if not exists kit_stock_update_audit (
+  id bigserial primary key,
+  actor_employee_id bigint not null references employees(id) on delete restrict,
+  kit_id bigint not null references kits(id) on delete restrict,
+  part_code text,
+  serial_number text,
+  matched_by text not null,
+  old_values jsonb not null,
+  new_values jsonb not null,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists project_teams (
   project_id bigint not null references projects(id) on delete cascade,
   team_id bigint not null references teams(id) on delete cascade,

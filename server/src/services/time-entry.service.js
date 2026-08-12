@@ -144,10 +144,10 @@ async function hydrateRows(rows, employee, options = {}) {
 
 
       const identifiers =
-        String(row.kits || "")
+        [...new Set(String(row.kits || "")
           .split(/[|,\s]+/)
           .map(item=>item.trim())
-          .filter(Boolean);
+          .filter(Boolean))];
 
 
 
@@ -517,7 +517,13 @@ export const timeEntryService = {
 
 
 
+            const insertedKitIds = new Set();
+
             for(const kit of kits){
+              if (insertedKitIds.has(kit.id)) {
+                continue;
+              }
+              insertedKitIds.add(kit.id);
 
 
               await client.query(

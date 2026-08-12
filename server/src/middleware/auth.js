@@ -52,9 +52,18 @@ export async function requireAuth(req, _res, next) {
       throw new AppError(401, "User not found");
     }
 
+    if (employee.active === false || employee.active === 0) {
+      await authService.revokeSession(session.id, "account_inactive");
+      throw new AppError(403, "Account is inactive");
+    }
+
     const isPasswordChangeRequest = req.path === "/change-password";
     const isLogoutRequest = req.path === "/logout";
-    if (employee.must_change_password && !isPasswordChangeRequest && !isLogoutRequest) {
+    const passwordExpired = employee.password_expires_at
+      ? new Date(employee.password_expires_at).getTime() <= Date.now()
+      : false;
+
+    if ((employee.must_change_password || passwordExpired) && !isPasswordChangeRequest && !isLogoutRequest) {
       throw new AppError(403, "Password change required");
     }
 
