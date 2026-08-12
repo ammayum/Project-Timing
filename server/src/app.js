@@ -15,6 +15,7 @@ import { publicRoutes } from "./routes/public.routes.js";
 import { inventoryRoutes } from "./modules/inventory/inventory.routes.js";
 import { inventoryLegacyRoutes } from "./modules/inventory/inventory.legacy.routes.js";
 import { inventoryLocationMoveRoutes } from "./modules/inventory/inventory.location-move.routes.js";
+import { inventoryPalletRoutes } from "./modules/inventory/inventory.pallet.routes.js";
 import { env } from "./config/env.js";
 import { getProductionReadiness } from "./config/db.js";
 
@@ -91,6 +92,7 @@ export function createApp() {
   app.use("/api/v1/inventory", inventoryRoutes);
   app.use("/api/v1/inventory", inventoryLegacyRoutes);
   app.use("/api/v1/inventory", inventoryLocationMoveRoutes);
+  app.use("/api/v1/inventory", inventoryPalletRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
