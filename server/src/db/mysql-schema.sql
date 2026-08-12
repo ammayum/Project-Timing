@@ -1,5 +1,5 @@
 create table if not exists employees (
-  id bigint auto_increment primary key,
+  id int auto_increment primary key,
   sso_id varchar(255) not null unique,
   name varchar(255) not null,
   email varchar(255) not null unique,
@@ -39,7 +39,7 @@ create table if not exists activity_types (
 
 create table if not exists time_entries (
   id bigint auto_increment primary key,
-  employee_id bigint not null,
+  employee_id int not null,
   activity_type_id bigint not null,
   project_id bigint null,
   order_num varchar(255) null,
@@ -92,7 +92,7 @@ create table if not exists stock_report (
 
 create table if not exists auth_sessions (
   id varchar(64) primary key,
-  employee_id bigint not null,
+  employee_id int not null,
   token_hash varchar(128) not null unique,
   created_at timestamp not null,
   last_activity_at timestamp not null,
@@ -103,7 +103,7 @@ create table if not exists auth_sessions (
 
 create table if not exists kit_stock_update_audit (
   id bigint auto_increment primary key,
-  actor_employee_id bigint not null,
+  actor_employee_id int not null,
   kit_id bigint not null,
   part_code varchar(255) null,
   serial_number varchar(255) null,
@@ -123,7 +123,7 @@ create table if not exists project_teams (
 
 create table if not exists project_managers (
   project_id bigint not null,
-  employee_id bigint not null,
+  employee_id int not null,
   assignment_role varchar(100) not null default 'Manager',
   primary key (project_id, employee_id)
 );
