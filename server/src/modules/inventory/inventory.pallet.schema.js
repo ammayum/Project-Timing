@@ -77,6 +77,21 @@ const PALLET_SCHEMA = [
   )`,
 ];
 
+async function ensureTrigger(triggerName, statement) {
+  const [rows] = await pool.query(
+    `SELECT TRIGGER_NAME
+     FROM information_schema.TRIGGERS
+     WHERE TRIGGER_SCHEMA = DATABASE()
+       AND TRIGGER_NAME = ?
+     LIMIT 1`,
+    [triggerName],
+  );
+
+  if (!rows[0]) {
+    await pool.query(statement);
+  }
+}
+
 export async function ensurePalletSchema() {
   const engine = await getActiveWriteEngine();
   if (engine !== "mysql") {
@@ -89,6 +104,58 @@ export async function ensurePalletSchema() {
   for (const statement of PALLET_SCHEMA) {
     await pool.query(statement);
   }
+
+  await ensureTrigger(
+    "trg_inventory_pallet_asset_update_guard",
+    `CREATE TRIGGER trg_inventory_pallet_asset_update_guard
+     BEFORE UPDATE ON inventory_assets
+     FOR EACH ROW
+     BEGIN
+       IF EXISTS (
+         SELECT 1 FROM inventory_pallet_assets pa WHERE pa.asset_id = OLD.id LIMIT 1
+       ) THEN
+         IF NOT (NEW.project_id <=> OLD.project_id) OR NOT (NEW.part_code <=> OLD.part_code) THEN
+           SIGNAL SQLSTATE '45000'
+             SET MESSAGE_TEXT = 'Palletized kit cannot be reassigned; remove it from the pallet first';
+         END IF;
+
+         IF NOT (NEW.stock_status <=> OLD.stock_status)
+            AND NEW.stock_status IN (
+              'READY_FOR_HANDOVER', 'RETURN_PENDING', 'PACKED', 'READY_TO_SHIP',
+              'DISPATCHED', 'IN_TRANSIT', 'DELIVERED'
+            ) THEN
+           SIGNAL SQLSTATE '45000'
+             SET MESSAGE_TEXT = 'Palletized kit cannot enter an individual handover/shipping state; use the pallet workflow or remove it first';
+         END IF;
+       END IF;
+     END`,
+  );
+
+  await ensureTrigger(
+    "trg_inventory_pallet_movement_item_guard",
+    `CREATE TRIGGER trg_inventory_pallet_movement_item_guard
+     BEFORE INSERT ON inventory_movement_items
+     FOR EACH ROW
+     BEGIN
+       DECLARE v_movement_type VARCHAR(50);
+
+       IF NEW.asset_id IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM inventory_pallet_assets pa WHERE pa.asset_id = NEW.asset_id LIMIT 1
+          ) THEN
+         SELECT movement_type INTO v_movement_type
+         FROM inventory_movements
+         WHERE id = NEW.movement_id
+         LIMIT 1;
+
+         IF v_movement_type NOT IN ('RESERVATION', 'PICK')
+            AND v_movement_type NOT LIKE 'PALLET_%' THEN
+           SIGNAL SQLSTATE '45000'
+             SET MESSAGE_TEXT = 'Palletized kit must be moved with its pallet or removed from the pallet first';
+         END IF;
+       END IF;
+     END`,
+  );
 
   return { available: true, engine };
 }
