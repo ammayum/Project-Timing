@@ -16,7 +16,7 @@ export async function ensureEngineerLocationSchema() {
   );
 
   await pool.query(
-    "ALTER TABLE inventory_locations ADD COLUMN IF NOT EXISTS assigned_employee_id INT NULL",
+    "ALTER TABLE inventory_locations ADD COLUMN IF NOT EXISTS assigned_employee_id BIGINT NULL",
   );
 
   try {
