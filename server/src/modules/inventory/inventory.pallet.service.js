@@ -138,6 +138,15 @@ async function loadPalletItemsForUpdate(tx, palletId) {
   return rows;
 }
 
+async function touchPallet(tx, palletId, userId) {
+  await tx.query(
+    `UPDATE inventory_pallets
+     SET version = version + 1, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [userId, palletId],
+  );
+}
+
 async function addAssetsToPallet(tx, pallet, assets, user, reason) {
   if (pallet.pallet_status !== "OPEN") {
     throw new AppError(409, "Pallet must be OPEN before contents can be changed");
@@ -305,7 +314,7 @@ export const inventoryPalletService = {
        LIMIT ?`,
       [term, term, term, term, term, safeLimit],
     );
-    return rows;
+    return rows.map((row) => ({ ...row, item_count: Number(row.item_count || 0) }));
   },
 
   async get(palletId) {
@@ -355,9 +364,17 @@ export const inventoryPalletService = {
     ]);
 
     if (!palletRows[0]) throw new AppError(404, "Pallet not found");
+    const kitTypeCounts = itemRows.reduce((summary, item) => {
+      summary[item.kit_type_code] = (summary[item.kit_type_code] || 0) + 1;
+      return summary;
+    }, {});
     return {
-      pallet: palletRows[0],
+      pallet: { ...palletRows[0], item_count: itemRows.length },
       items: itemRows,
+      summary: {
+        itemCount: itemRows.length,
+        kitTypeCounts,
+      },
       movements: movementRows,
       membershipHistory: membershipRows,
     };
@@ -428,6 +445,7 @@ export const inventoryPalletService = {
       if (!pallet) throw new AppError(404, "Pallet not found");
       const assets = await resolveAssets(tx, payload.identifiers);
       await addAssetsToPallet(tx, pallet, assets, user, payload.reason);
+      await touchPallet(tx, pallet.id, user.id);
       await inventoryRepository.insertAudit(tx, auditPayload(user, context, {
         eventType: "PALLET_ITEMS_ADDED",
         entityType: "inventory_pallet",
@@ -466,6 +484,7 @@ export const inventoryPalletService = {
         );
       }
 
+      await touchPallet(tx, pallet.id, user.id);
       await inventoryRepository.insertAudit(tx, auditPayload(user, context, {
         eventType: "PALLET_ITEMS_REMOVED",
         entityType: "inventory_pallet",
@@ -474,6 +493,58 @@ export const inventoryPalletService = {
         afterValue: { identifiers: payload.identifiers, removedCount: assets.length },
       }));
     });
+    return this.get(palletId);
+  },
+
+  async syncItems(palletId, payload, user, contextInput = {}) {
+    await this.ensureSchema();
+    const access = getInventoryAccess(user);
+    if (!access.isStores) throw new AppError(403, "Stores access is required to edit pallet contents");
+    const context = correlationContext(contextInput);
+
+    await inventoryRepository.transaction(async (tx) => {
+      const pallet = await loadPallet(tx, palletId, { forUpdate: true });
+      if (!pallet) throw new AppError(404, "Pallet not found");
+      if (pallet.pallet_status !== "OPEN") throw new AppError(409, "Pallet must be OPEN before its kit list can be edited");
+
+      const currentItems = await loadPalletItemsForUpdate(tx, pallet.id);
+      const desiredAssets = await resolveAssets(tx, payload.identifiers || []);
+      const currentById = new Map(currentItems.map((item) => [Number(item.id), item]));
+      const desiredById = new Map(desiredAssets.map((item) => [Number(item.id), item]));
+      const removed = currentItems.filter((item) => !desiredById.has(Number(item.id)));
+      const added = desiredAssets.filter((item) => !currentById.has(Number(item.id)));
+
+      for (const asset of removed) {
+        await tx.query(`DELETE FROM inventory_pallet_assets WHERE id = ?`, [asset.membership_id]);
+        await tx.query(
+          `INSERT INTO inventory_pallet_membership_history
+            (pallet_id, asset_id, action, performed_by, reason)
+           VALUES (?, ?, 'REMOVE', ?, ?)`,
+          [pallet.id, asset.id, user.id, payload.reason || "Removed by pallet list edit"],
+        );
+      }
+
+      await addAssetsToPallet(tx, pallet, added, user, payload.reason || "Added by pallet list edit");
+      await touchPallet(tx, pallet.id, user.id);
+
+      await inventoryRepository.insertAudit(tx, auditPayload(user, context, {
+        eventType: "PALLET_LIST_EDITED",
+        entityType: "inventory_pallet",
+        entityId: pallet.id,
+        action: "SYNC_ITEMS",
+        beforeValue: {
+          itemCount: currentItems.length,
+          partCodes: currentItems.map((item) => item.part_code),
+        },
+        afterValue: {
+          itemCount: desiredById.size,
+          added: added.map((item) => item.part_code),
+          removed: removed.map((item) => item.part_code),
+          partCodes: desiredAssets.map((item) => item.part_code).sort(),
+        },
+      }));
+    });
+
     return this.get(palletId);
   },
 
@@ -611,6 +682,7 @@ export const inventoryPalletService = {
           assignedEmployeeId: destination.assigned_employee_id || null,
           assignedEmployeeName: destination.assigned_employee_name || null,
           inventoryMovementId,
+          itemCount: items.length,
         },
       }));
     });
