@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
-import { Boxes, ChartColumnIncreasing, ClipboardCheck, ClipboardList, Clock, Home, MapPin, ShieldCheck, Warehouse } from "lucide-react";
+import { Boxes, ChartColumnIncreasing, ClipboardCheck, ClipboardList, Clock, Home, MapPin, Package, ShieldCheck, Warehouse } from "lucide-react";
 import { useAuth } from "./hooks/useAuth.js";
 import React from "react";
 
@@ -29,6 +29,9 @@ const InventoryPage = lazy(() =>
 );
 const KitLocationsPage = lazy(() =>
   import("./features/inventory/KitLocationsPage.jsx").then((module) => ({ default: module.KitLocationsPage }))
+);
+const PalletsPage = lazy(() =>
+  import("./features/inventory/PalletsPage.jsx").then((module) => ({ default: module.PalletsPage }))
 );
 
 export function App() {
@@ -326,6 +329,16 @@ export function App() {
               </button>
             )}
 
+            {canAccessInventory && (
+              <button
+                type="button"
+                onClick={() => setActiveTab("pallets")}
+                className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium ${activeTab === "pallets" ? "bg-white text-bt-purple-darker" : "bg-white/5 text-slate-200"}`}
+              >
+                <Package size={16} /> Pallets
+              </button>
+            )}
+
             {canAccessKitLocations && (
               <button
                 type="button"
@@ -424,6 +437,7 @@ export function App() {
 
           {activeTab === "time" && <TimeEntryPage auth={auth} />}
           {activeTab === "inventory" && <InventoryPage auth={auth} />}
+          {activeTab === "pallets" && <PalletsPage auth={auth} />}
           {activeTab === "kit-locations" && <KitLocationsPage auth={auth} />}
           {activeTab === "project-kits" && <ProjectKitsPage />}
           {activeTab === "stock-updates" && <StockUpdatesPage />}
