@@ -103,7 +103,7 @@ create table if not exists auth_sessions (
 
 create table if not exists kit_stock_update_audit (
   id bigint auto_increment primary key,
-  actor_employee_id int not null,
+  actor_employee_id bigint not null,
   kit_id bigint not null,
   part_code varchar(255) null,
   serial_number varchar(255) null,
