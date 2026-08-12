@@ -10,15 +10,36 @@ function normalizeEin(value) {
   return normalized === "" ? null : normalized;
 }
 
+async function ensureEmployeeColumn(engine, columnName, definition) {
+  if (engine === "postgres") {
+    await pool.query(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS ${columnName} ${definition}`);
+    return;
+  }
+
+  const [rows] = await pool.query(
+    `SELECT COLUMN_NAME
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'employees'
+       AND COLUMN_NAME = ?
+     LIMIT 1`,
+    [columnName],
+  );
+
+  if (!rows[0]) {
+    await pool.query(`ALTER TABLE employees ADD COLUMN ${columnName} ${definition}`);
+  }
+}
+
 export const employeeRepository = {
   async ensureSchema() {
     await teamRepository.ensureTables();
     const engine = await getActiveReadEngine();
 
-    await pool.query("ALTER TABLE employees ADD COLUMN IF NOT EXISTS password_hash varchar(512) NULL");
-    await pool.query("ALTER TABLE employees ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false");
-    await pool.query("ALTER TABLE employees ADD COLUMN IF NOT EXISTS team_id BIGINT NULL");
-    await pool.query("ALTER TABLE employees ADD COLUMN IF NOT EXISTS working_hours_per_day DECIMAL(4,2) NOT NULL DEFAULT 7.50");
+    await ensureEmployeeColumn(engine, "password_hash", "varchar(512) NULL");
+    await ensureEmployeeColumn(engine, "must_change_password", "boolean NOT NULL DEFAULT false");
+    await ensureEmployeeColumn(engine, "team_id", "BIGINT NULL");
+    await ensureEmployeeColumn(engine, "working_hours_per_day", "DECIMAL(4,2) NOT NULL DEFAULT 7.50");
 
     if (engine === "postgres") {
       await pool.query("CREATE INDEX IF NOT EXISTS idx_employees_team_id ON employees (team_id)");
